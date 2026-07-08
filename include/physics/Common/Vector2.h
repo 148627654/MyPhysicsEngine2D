@@ -1,9 +1,10 @@
+#pragma once
 #include <iostream>
 class Vector2
 {
 public:
 	~Vector2() = default;
-	Vector2(float x = 0.0, float y = 0.0) :x(x), y(y) {}
+	constexpr Vector2(float x = 0.0, float y = 0.0) :x(x), y(y) {}
 	//向量与向量
 	Vector2 operator+(const Vector2& val);
 	Vector2 operator-(const Vector2& val);
@@ -12,9 +13,9 @@ public:
 	//向量与float
 	Vector2 operator*(float num) const;
 	friend Vector2 operator*(float num, const Vector2& vec); 
-	Vector2 operator/(float &num);
-	Vector2& operator*=(float& num);
-	Vector2& operator/=(float& num);
+	Vector2 operator/(float num)const;
+	Vector2& operator*=(float num);
+	Vector2& operator/=(float num);
 	//单目运算符
 	Vector2 operator-() const;
 	//相等判断

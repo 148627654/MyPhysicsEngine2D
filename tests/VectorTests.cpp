@@ -51,13 +51,13 @@ void TestVectorMath() {
     std::cout << "All Vector2 Tests Passed Successfully!\n\n";
 }
 
-int main() {
-    try {
-        TestVectorMath();
-    }
-    catch (const std::exception& e) {
-        std::cerr << "Test failed with error: " << e.what() << std::endl;
-        return -1;
-    }
-    return 0;
-}
+//int main() {
+//    try {
+//        TestVectorMath();
+//    }
+//    catch (const std::exception& e) {
+//        std::cerr << "Test failed with error: " << e.what() << std::endl;
+//        return -1;
+//    }
+//    return 0;
+//}

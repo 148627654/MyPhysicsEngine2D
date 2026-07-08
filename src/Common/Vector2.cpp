@@ -39,7 +39,7 @@ Vector2 Vector2::operator*(float num) const
 	return temp;
 }
 
-Vector2 Vector2::operator/(float& num)
+Vector2 Vector2::operator/(float num) const
 {
 	Vector2 temp;
 	temp.x = x / num;
@@ -47,14 +47,14 @@ Vector2 Vector2::operator/(float& num)
 	return temp;
 }
 
-Vector2& Vector2::operator*=(float& num)
+Vector2& Vector2::operator*=(float num)
 {
 	this->x *= num;
 	this->y *= num;
 	return *this;
 }
 
-Vector2& Vector2::operator/=(float& num)
+Vector2& Vector2::operator/=(float num)
 {
 	this->x /= num;
 	this->y /= num;
