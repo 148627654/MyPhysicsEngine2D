@@ -18,5 +18,15 @@ void World::Step(float dt)
 
 		// 清力
 		p->ClearForce();
+		float angularAcceleration = p->torque * p->invInertia;
+
+		// 2. 积分角速度
+		p->angularVelocity += angularAcceleration * dt;
+
+		// 3. 积分角度
+		p->rotation += p->angularVelocity * dt;
+
+		// 4. 清空转矩
+		p->torque = 0.0f;
 	}
 }

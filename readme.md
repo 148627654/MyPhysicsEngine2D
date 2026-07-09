@@ -11,13 +11,17 @@ MyPhysicsEngine2D/
 ├── docs/               # 物理公式推导与设计文档
 ├── include/            # 头文件 (.h)
 │   └── physics/
-│       ├── Common/     # 基础数学库
+│       ├── Common/     # 基础数学库 (Vector2, Settings)
+│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box)  <-- 新增
 │       ├── Dynamics/   # 动力学核心 (Body, World)
 │       └── Utils/      # 工具类 (CSVExporter)
 ├── src/                # 源代码 (.cpp)
-├── tests/              # 单元测试代码
+│   ├── Collision/      # 形状与惯量计算实现             <-- 新增
+│   ├── Dynamics/       
+│   └── ...
+├── tests/              # 单元测试与 Demo 入口
 ├── output/             # 模拟生成的 CSV 数据文件
-├── scripts/            # Python 可视化脚本
+├── scripts/            # Python 可视化脚本 (Matplotlib)
 └── README.md
 ```
 ---
@@ -32,7 +36,11 @@ MyPhysicsEngine2D/
   - 构建 `RigidBody` 类（位置、速度、力、质量）。
   - 实现 `World` 物理步进与 **半隐式欧拉 (Semi-implicit Euler)** 积分。
   - 实现 **CSV 数据导出系统** 与 Python 可视化。
-- [ ] **Day 03: 形状定义 (Collider)**
+- [x] **Day 03: 形状定义与旋转动力学 (Shape & Rotation)**
+  - 实现 `Shape` 基类与 `Circle`, `Box` 子类。
+  - 引入旋转状态量：角度、角速度、转矩、转动惯量。
+  - 实现偏心力产生转矩的计算逻辑。
+  - 完成平动与转动的耦合模拟。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -58,9 +66,9 @@ MyPhysicsEngine2D/
 
 ### 1. 核心算法：半隐式欧拉法 (Semi-implicit Euler)
 为了保证物理模拟的能量守恒与稳定性，弃用了显式欧拉法，采用了工业级标准的半隐式欧拉积分：
-1.  **更新加速度**：$\vec{a} = \frac{\sum\vec{F}}{m} + \vec{g}$
-2.  **更新速度**：$\vec{v}_{new} = \vec{v}_{old} + \vec{a} \cdot \Delta t$
-3.  **更新位置**：$\vec{p}_{new} = \vec{p}_{old} + \vec{v}_{new} \cdot \Delta t$
+1.  **更新加速度**： $\vec{a} = \frac{\sum\vec{F}}{m} + \vec{g}$
+2.  **更新速度**： $\vec{v}_{new} = \vec{v}_{old} + \vec{a} \cdot \Delta t$
+3.  **更新位置**： $\vec{p}_{new} = \vec{p}_{old} + \vec{v}_{new} \cdot \Delta t$
 
 ### 2. 关键工程优化
 - **质量倒数 (Inverse Mass)**：在 `Body` 类中存储 `invMass` ($1/m$)。
@@ -73,11 +81,40 @@ MyPhysicsEngine2D/
 - ✅ **水平匀速运动**：在无水平外力下，$X$ 轴坐标呈线性增长。
 - ✅ **自由落体/抛物线**：$Y$ 轴速度随时间线性递减，位移符合二次函数规律。
 - ✅ **数据精度**：经对比，模拟轨迹与理论解析解误差在 $0.1\%$ 以内。
+## 🚀 Day 03进展：形状定义与旋转动力学
+
+### 1. 形状与转动惯量 (Moment of Inertia)
+为了实现真实的物理旋转，不再将物体视为单纯的质点，而是具有几何属性的刚体：
+- **类型识别**：采用 `enum` + `Inheritance` 的混合方案。基类 `Shape` 提供 `Type` 标签用于快速类型判断，提供虚函数 `ComputeMass` 处理多态计算。
+- **惯量计算**：为不同形状实现了转动惯量公式，确保物体的旋转行为与其形状、大小、质量分布相符合：
+    - **圆形**：$I = \frac{1}{2}mr^2$
+    - **矩形**：$I = \frac{1}{12}m(w^2 + h^2)$
+- **静态属性**：引入 `invInertia` (惯量倒数)，当 $invInertia = 0$ 时，物体在物理上表现为无法被旋转的固定体。
+
+### 2. 旋转动力学积分
+在 `World::Step` 中扩展了积分器，使其支持角动量更新：
+1.  **角加速度**：$\alpha = \frac{\sum\tau}{I}$ (转矩 / 转动惯量)
+2.  **角速度**：$\omega_{new} = \omega_{old} + \alpha \cdot \Delta t$
+3.  **角度**：$\theta_{new} = \theta_{old} + \omega_{new} \cdot \Delta t$
+
+### 3. 偏心力与转矩 (Eccentric Force)
+实现了 `ApplyForceAtPoint` 接口，模拟力作用于非质心位置产生的物理效果：
+- **力矩合成**：$\vec{\tau} = \vec{r} \times \vec{F}$ (其中 $\vec{r}$ 是从质心到作用点的位移向量)。
+- **物理效果**：当对矩形的顶点施加水平力时，物体在沿抛物线坠落的同时，会根据冲量产生持续的匀速旋转，完美还原了现实中的“翻滚”现象。
 ---
+### 4. 验证结果
+通过 CSV 导出数据与 Python 可视化脚本验证：
+- ✅ **动量守恒**：在无后续外力情况下，角速度 $\omega$ 保持恒定。
+- ✅ **几何正确性**：矩形与圆形的旋转速度差异符合转动惯量公式预想。
+- ✅ **可视化**：生成的轨迹图中，紫色向量（方向示意）随时间平滑转动，证明旋转逻辑正确。
+
+
 ## 💻 编译与运行
 1. 使用 **Visual Studio 2019/2022** 打开解决方案。
 2. 确保项目属性中 `Additional Include Directories` 包含 `$(ProjectDir)include`。
 3. 设置 C++ 标准为 **ISO C++11**。
 ---
+
+
 
 

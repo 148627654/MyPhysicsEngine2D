@@ -9,6 +9,7 @@ public:
 	World(Vector2 gravity = Settings::GRAVITY) : m_gravity(gravity) {}
 	void Step(float dt);
 	void AddBody(Body* body) { m_bodies.push_back(body); }
+
 private:
 	std::vector<Body*> m_bodies;
 	Vector2 m_gravity;
