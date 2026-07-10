@@ -12,14 +12,15 @@ MyPhysicsEngine2D/
 ├── include/            # 头文件 (.h)
 │   └── physics/
 │       ├── Common/     # 基础数学库 (Vector2, Settings)
-│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box)  <-- 新增
+│       ├── Collision/  # 碰撞几何体与检测 (Shape, Circle, Box, Manifold) <-- 更新
 │       ├── Dynamics/   # 动力学核心 (Body, World)
 │       └── Utils/      # 工具类 (CSVExporter)
 ├── src/                # 源代码 (.cpp)
-│   ├── Collision/      # 形状与惯量计算实现             <-- 新增
+│   ├── Collision/      # 碰撞检测算法实现 (Collision.cpp)            <-- 更新
 │   ├── Dynamics/       
 │   └── ...
 ├── tests/              # 单元测试与 Demo 入口
+│   └── CollisionTests.cpp # Day 04 碰撞测试脚本                    <-- 新增
 ├── output/             # 模拟生成的 CSV 数据文件
 ├── scripts/            # Python 可视化脚本 (Matplotlib)
 └── README.md
@@ -41,6 +42,12 @@ MyPhysicsEngine2D/
   - 引入旋转状态量：角度、角速度、转矩、转动惯量。
   - 实现偏心力产生转矩的计算逻辑。
   - 完成平动与转动的耦合模拟。
+### 第2阶段：碰撞检测
+- [x] **Day 04: 基础碰撞检测与流形构造 (Circle vs. Circle)**
+  - 实现 `Manifold` 结构，存储法线、穿透深度与接触点。
+  - 实现圆与圆的碰撞判定算法。
+  - 解决圆心完全重合时的除零异常（NaN Normal）。
+  - 通过单元测试验证边界情况（相切、重叠、同心）。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -107,14 +114,38 @@ MyPhysicsEngine2D/
 - ✅ **动量守恒**：在无后续外力情况下，角速度 $\omega$ 保持恒定。
 - ✅ **几何正确性**：矩形与圆形的旋转速度差异符合转动惯量公式预想。
 - ✅ **可视化**：生成的轨迹图中，紫色向量（方向示意）随时间平滑转动，证明旋转逻辑正确。
+---
+## 🚀 Day 04进展：碰撞检测与流形 (Manifold)
 
+### 1. 碰撞流形的设计
+为了让后续的冲量解算器（Solver）能够知道如何修补物理穿透，我们实现了 `Manifold` 结构。它不仅记录“是否撞了”，还记录了关键的几何数据：
+- **Normal (碰撞法线)**：从物体 A 指向 B 的单位向量，定义了排斥力的方向。
+- **Penetration (穿透深度)**：两个圆重叠的距离，用于位置修正（Position Correction）。
+- **Contact Points (接触点)**：力作用的具体坐标，对于旋转产生的转矩计算至关重要。
+
+### 2. 圆 vs 圆 检测算法
+通过比较两圆心欧几里得距离 $d$ 与半径之和 $R_1 + R_2$ 进行判定。
+- **鲁棒性处理**：
+  针对**同心圆（$d=0$）**的情况，通过手动强制指定法线 `(0, 1)`，避免了归一化导致的 `NaN` 崩溃问题。
+
+### 3. 如何验证
+运行 `tests/CollisionTests.cpp`。当前已通过以下严苛测试用例：
+- ✅ **Far Away**: 距离大于半径和，判定为无碰撞。
+- ✅ **Overlapping**: 水平重叠 0.5 单位，法线准确识别为 `(1, 0)`，穿透深度 `0.5`。
+- ✅ **Just Touching**: 距离刚好等于半径和，识别为临界碰撞（相切）。
+- ✅ **Concentric**: 圆心完全重合，触发安全保护逻辑，输出默认法线。
+
+**测试输出示例：**
+```text
+==== Test: Overlapping (Horizontal) ====
+Result: COLLISION!
+  Penetration: 0.5
+  Normal:      (1, 0)
+  Contact Pt:  (1, 0)
+```
 
 ## 💻 编译与运行
 1. 使用 **Visual Studio 2019/2022** 打开解决方案。
 2. 确保项目属性中 `Additional Include Directories` 包含 `$(ProjectDir)include`。
 3. 设置 C++ 标准为 **ISO C++11**。
 ---
-
-
-
-

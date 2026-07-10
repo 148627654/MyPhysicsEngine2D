@@ -10,6 +10,7 @@ public:
 	}
 	float getArea() { return Settings::PAI * radius * radius; }
 	MassData ComputeMass(float density);
+	float getR()const { return radius; }
 private:
 	float radius;
 };

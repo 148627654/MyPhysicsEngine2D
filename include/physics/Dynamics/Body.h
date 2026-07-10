@@ -4,7 +4,7 @@
 class Body
 {
 public:
-	Body(Shape* s, float x, float y, float density = 1.0f)
+	Body(Shape* s, float x=0.0, float y=0.0, float density = 1.0f)
 		: shape(s), position(Vector2(x, y)), rotation(0.0f),
 		velocity(Vector2(0, 0)), angularVelocity(0.0f),
 		force(Vector2(0, 0)), torque(0.0f), gravityScale(1.0f)
@@ -29,8 +29,10 @@ public:
 	Vector2 AddForce(Vector2 f);
 	friend class World;
 	// 方便外部（如日志系统）读取数据
+	void SetPosition(float x, float y) { position = Vector2(x, y); }
 	Vector2 GetPosition() const { return position; }
 	Vector2 GetVelocity() const { return velocity; }
+	Shape* GetShape()const { return shape; };
 	float GetRotation()const { return rotation; }
 	void SetVelocity(Vector2 v) { velocity = v; }
 
