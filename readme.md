@@ -12,15 +12,16 @@ MyPhysicsEngine2D/
 ├── include/            # 头文件 (.h)
 │   └── physics/
 │       ├── Common/     # 基础数学库 (Vector2, Settings)
-│       ├── Collision/  # 碰撞几何体与检测 (Shape, Circle, Box, Manifold) <-- 更新
+│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold) <-- 更新
 │       ├── Dynamics/   # 动力学核心 (Body, World)
 │       └── Utils/      # 工具类 (CSVExporter)
 ├── src/                # 源代码 (.cpp)
-│   ├── Collision/      # 碰撞检测算法实现 (Collision.cpp)            <-- 更新
+│   ├── Collision/      # 碰撞检测算法 (Circle-Circle, SAT for Box-Box)       <-- 更新
 │   ├── Dynamics/       
 │   └── ...
 ├── tests/              # 单元测试与 Demo 入口
-│   └── CollisionTests.cpp # Day 04 碰撞测试脚本                    <-- 新增
+│   ├── CollisionTests.cpp    # Day 04 圆碰撞测试
+│   └── BoxCollisionTests.cpp # Day 05 矩形碰撞测试                    <-- 新增
 ├── output/             # 模拟生成的 CSV 数据文件
 ├── scripts/            # Python 可视化脚本 (Matplotlib)
 └── README.md
@@ -48,6 +49,11 @@ MyPhysicsEngine2D/
   - 实现圆与圆的碰撞判定算法。
   - 解决圆心完全重合时的除零异常（NaN Normal）。
   - 通过单元测试验证边界情况（相切、重叠、同心）。
+- [x] **Day 05: 分离轴定理 SAT (Box vs. Box)**
+  - 实现矩形世界顶点变换逻辑（Local to World）。
+  - 实现 SAT 核心算法：基于 4 条分离轴的投影重叠检查。
+  - 实现最小穿透向量 (MTV) 的提取，确保碰撞响应方向的最优性。
+  - 实现法线方向统一化（A 指向 B）。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -142,6 +148,31 @@ Result: COLLISION!
   Penetration: 0.5
   Normal:      (1, 0)
   Contact Pt:  (1, 0)
+```
+## 🚀 Day 05 进展：分离轴定理 (SAT) 与多边形检测
+
+### 1. 核心算法：SAT (Separating Axis Theorem)
+为了处理矩形及未来可能的多边形碰撞，引入了工业级的 SAT 算法。该算法通过寻找是否存在“分离轴”来判定碰撞：
+- **投影计算**：将两个矩形的所有顶点投影到 A 和 B 的 4 条局部轴（法线）上。
+- **MTV (Minimum Translation Vector)**：在所有重叠的轴中，选取重叠量最小的一条作为碰撞法线，这是保证物理模拟稳定的关键。
+
+### 2. 几何运算优化
+- **坐标变换**：通过 `pos + local_vertex.Rotate(angle)` 将局部形状顶点实时变换至世界坐标系。
+- **投影范围获取**：采用 $O(N)$ 的单次遍历获取投影的 `[min, max]`，避免了昂贵的排序操作。
+
+### 3. 如何验证
+运行 `tests/BoxCollisionTests.cpp`。当前已通过以下物理场景验证：
+- ✅ **AABB Far Away**: 轴对齐状态下无接触，返回 `false`。
+- ✅ **Horizontal Overlap**: 水平重叠 0.5 单位，法线识别为 `(1, 0)`，穿透深度 `0.500`。
+- ✅ **Diagonal Touching**: 两个矩形在斜对角点精准接触，判定穿透深度为 `0.000`（临界状态）。
+- ✅ **Containment**: 小矩形完全包含在大矩形内，算法自动选取距离最近的边缘作为法线，并计算正确的穿透深度。
+
+**测试输出：**
+```text
+==== Test: Horizontal Overlap (AABB) ====
+Result: [ COLLISION! ]
+  Penetration: 0.500
+  Normal:      (1.000, 0.000)
 ```
 
 ## 💻 编译与运行
