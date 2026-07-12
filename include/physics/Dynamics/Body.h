@@ -34,6 +34,7 @@ public:
 	Vector2 GetVelocity() const { return velocity; }
 	Shape* GetShape()const { return shape; };
 	float GetRotation()const { return rotation; }
+	void SetRotation(float r) { rotation = r; }
 	void SetVelocity(Vector2 v) { velocity = v; }
 
 	//绑定形状并自动计算质量属性

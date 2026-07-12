@@ -78,6 +78,106 @@ bool Collision::BoxVsBox(Manifold* m, Body* a, Body* b)
 	return true;
 }
 
+bool Collision::CircleVsBox(Manifold* m, Body* circlebody, Body* boxbody)
+{
+	Circle* circle = static_cast<Circle*>(circlebody->GetShape());
+	Box* box = static_cast<Box*>(boxbody->GetShape());
+
+	// 1. 世界坐标转 Box 局部坐标
+	Vector2 relationPos = circlebody->GetPosition() - boxbody->GetPosition();
+	Vector2 localCirclePos = relationPos.Rotate(-boxbody->GetRotation());
+
+	float hw = box->getHalfWidth();
+	float hh = box->getHalfHeigh(); // 修正拼写
+
+	// 2. 确定矩形上距离圆心最近的点
+	Vector2 closestPoint(
+		std::max(-hw, std::min(localCirclePos.getX(), hw)),
+		std::max(-hh, std::min(localCirclePos.getY(), hh))
+	);
+
+	// 3. 计算距离
+	Vector2 distVec = localCirclePos - closestPoint;
+	float distSq = distVec.LengthSquared();
+	float r = circle->getR(); // 假设你的函数名是这个
+
+	// 判定是否碰撞
+	bool isInside = (std::abs(localCirclePos.getX()) <= hw && std::abs(localCirclePos.getY()) <= hh);
+
+	if (distSq > r * r && !isInside)
+		return false;
+
+	m->bodyA = circlebody;
+	m->bodyB = boxbody;
+
+	Vector2 localNormal; // 提前声明局部法线
+
+	if (distSq > 0.0001f) {
+		// 情况 A: 圆心在矩形外
+		float dist = std::sqrt(distSq);
+		m->penetration = r - dist;
+		// distVec 是从最近点指向圆心的，我们需要从圆指向矩形，所以取反
+		localNormal = (distVec * -1.0f) / dist;
+	}
+	else {
+		// 情况 B: 圆心在矩形内（穿透最深的情况）
+		// 寻找距离圆心最近的边
+		float distToRight = hw - localCirclePos.getX();
+		float distToLeft = hw + localCirclePos.getX();
+		float distToTop = hh - localCirclePos.getY();
+		float distToBottom = hh + localCirclePos.getY();
+
+		if (distToRight < distToLeft && distToRight < distToTop && distToRight < distToBottom) {
+			localNormal = Vector2(1, 0); // 指向右
+			m->penetration = r + distToRight;
+		}
+		else if (distToLeft < distToTop && distToLeft < distToBottom) {
+			localNormal = Vector2(-1, 0); // 指向左
+			m->penetration = r + distToLeft;
+		}
+		else if (distToTop < distToBottom) {
+			localNormal = Vector2(0, 1); // 指向上
+			m->penetration = r + distToTop;
+		}
+		else {
+			localNormal = Vector2(0, -1); // 指向下
+			m->penetration = r + distToBottom;
+		}
+	}
+
+	// 4. 将局部法线旋转回世界坐标
+	m->normal = localNormal.Rotate(boxbody->GetRotation());
+
+	// 5. 统一计算接触点 (就是矩形上的那个点，转回世界空间)
+	m->contacts.clear();
+	m->contacts.push_back(closestPoint.Rotate(boxbody->GetRotation()) + boxbody->GetPosition());
+
+	return true;
+}
+
+bool Collision::Dispatch(Manifold* m, Body* a, Body* b) {
+	Shape::Type typeA = a->GetShape()->type;
+	Shape::Type typeB = b->GetShape()->type;
+
+	// 1. 同类型碰撞
+	if (typeA == Shape::Type::type_Circle && typeB == Shape::Type::type_Circle) return Collision::CircleVsCircle(m, a, b);
+	if (typeA == Shape::Type::type_Box && typeB == Shape::Type::type_Box) return Collision::BoxVsBox(m, a, b);
+
+	// 2. 混合类型碰撞 (Circle vs Box)
+	if (typeA == Shape::Type::type_Circle && typeB == Shape::Type::type_Box) {
+		return Collision::CircleVsBox(m, a, b);
+	}
+
+	// 3. 混合类型碰撞 (Box vs Circle) -> 巧妙交换参数
+	if (typeA == Shape::Type::type_Box && typeB == Shape::Type::type_Circle) {
+		// 交换 a, b 顺序调用，并把法线反向
+		bool hit = Collision::CircleVsBox(m, b, a);
+		if (hit) m->normal = m->normal * -1.0f;
+		return hit;
+	}
+
+	return false;
+}
 std::vector<Vector2> Collision::GetBoxWorldVertices(const Body* body)
 {
 	Box* box = static_cast<Box*>(body->GetShape());//获取box

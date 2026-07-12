@@ -12,16 +12,17 @@ MyPhysicsEngine2D/
 ├── include/            # 头文件 (.h)
 │   └── physics/
 │       ├── Common/     # 基础数学库 (Vector2, Settings)
-│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold) <-- 更新
+│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold) 
 │       ├── Dynamics/   # 动力学核心 (Body, World)
 │       └── Utils/      # 工具类 (CSVExporter)
 ├── src/                # 源代码 (.cpp)
-│   ├── Collision/      # 碰撞检测算法 (Circle-Circle, SAT for Box-Box)       <-- 更新
+│   ├── Collision/      # 碰撞检测算法 (Narrow-phase: Circle, Box, Mixed)    <-- 更新
 │   ├── Dynamics/       
 │   └── ...
 ├── tests/              # 单元测试与 Demo 入口
-│   ├── CollisionTests.cpp    # Day 04 圆碰撞测试
-│   └── BoxCollisionTests.cpp # Day 05 矩形碰撞测试                    <-- 新增
+│   ├── CollisionTests.cpp      # Day 04 圆碰撞测试
+│   ├── BoxCollisionTests.cpp   # Day 05 矩形碰撞测试
+│   └── MixedCollisionTests.cpp # Day 06 混合形状测试                     <-- 新增
 ├── output/             # 模拟生成的 CSV 数据文件
 ├── scripts/            # Python 可视化脚本 (Matplotlib)
 └── README.md
@@ -54,6 +55,11 @@ MyPhysicsEngine2D/
   - 实现 SAT 核心算法：基于 4 条分离轴的投影重叠检查。
   - 实现最小穿透向量 (MTV) 的提取，确保碰撞响应方向的最优性。
   - 实现法线方向统一化（A 指向 B）。
+- [x] **Day 06: 混合形状碰撞 (Circle vs. Box)**
+  - 实现基于“最近点锚定 (Clamping)”的检测算法。
+  - 实现世界坐标系到矩形局部坐标系的逆向变换（反向旋转与平移）。
+  - 实现深层穿透处理逻辑（圆心在矩形内部时的法线提取）。
+  - 实现碰撞分发器 (Dispatcher) 处理 `Box vs Circle` 的参数交换与法线取反。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -100,19 +106,19 @@ MyPhysicsEngine2D/
 为了实现真实的物理旋转，不再将物体视为单纯的质点，而是具有几何属性的刚体：
 - **类型识别**：采用 `enum` + `Inheritance` 的混合方案。基类 `Shape` 提供 `Type` 标签用于快速类型判断，提供虚函数 `ComputeMass` 处理多态计算。
 - **惯量计算**：为不同形状实现了转动惯量公式，确保物体的旋转行为与其形状、大小、质量分布相符合：
-    - **圆形**：$I = \frac{1}{2}mr^2$
-    - **矩形**：$I = \frac{1}{12}m(w^2 + h^2)$
+    - **圆形**： $I = \frac{1}{2}mr^2$
+    - **矩形**： $I = \frac{1}{12}m(w^2 + h^2)$
 - **静态属性**：引入 `invInertia` (惯量倒数)，当 $invInertia = 0$ 时，物体在物理上表现为无法被旋转的固定体。
 
 ### 2. 旋转动力学积分
 在 `World::Step` 中扩展了积分器，使其支持角动量更新：
 1.  **角加速度**：$\alpha = \frac{\sum\tau}{I}$ (转矩 / 转动惯量)
-2.  **角速度**：$\omega_{new} = \omega_{old} + \alpha \cdot \Delta t$
-3.  **角度**：$\theta_{new} = \theta_{old} + \omega_{new} \cdot \Delta t$
+2.  **角速度**： $\omega_{new} = \omega_{old} + \alpha \cdot \Delta t$ 
+3.  **角度**： $\theta_{new} = \theta_{old} + \omega_{new} \cdot \Delta t$
 
 ### 3. 偏心力与转矩 (Eccentric Force)
 实现了 `ApplyForceAtPoint` 接口，模拟力作用于非质心位置产生的物理效果：
-- **力矩合成**：$\vec{\tau} = \vec{r} \times \vec{F}$ (其中 $\vec{r}$ 是从质心到作用点的位移向量)。
+- **力矩合成**： $\vec{\tau} = \vec{r} \times \vec{F}$  (其中 $\vec{r}$ 是从质心到作用点的位移向量)。
 - **物理效果**：当对矩形的顶点施加水平力时，物体在沿抛物线坠落的同时，会根据冲量产生持续的匀速旋转，完美还原了现实中的“翻滚”现象。
 ---
 ### 4. 验证结果
@@ -132,7 +138,7 @@ MyPhysicsEngine2D/
 ### 2. 圆 vs 圆 检测算法
 通过比较两圆心欧几里得距离 $d$ 与半径之和 $R_1 + R_2$ 进行判定。
 - **鲁棒性处理**：
-  针对**同心圆（$d=0$）**的情况，通过手动强制指定法线 `(0, 1)`，避免了归一化导致的 `NaN` 崩溃问题。
+  针对**同心圆（ $d=0$ ）**的情况，通过手动强制指定法线 `(0, 1)`，避免了归一化导致的 `NaN` 崩溃问题。
 
 ### 3. 如何验证
 运行 `tests/CollisionTests.cpp`。当前已通过以下严苛测试用例：
@@ -173,6 +179,35 @@ Result: COLLISION!
 Result: [ COLLISION! ]
   Penetration: 0.500
   Normal:      (1.000, 0.000)
+```
+## 🚀 Day 06 进展：混合形状碰撞 (Circle vs. Box)
+
+### 1. 核心算法：最近点锚定 (Clamping in Local Space)
+为了高效处理圆与旋转矩形的碰撞，采用了空间变换逻辑：
+- **空间转换**：将世界坐标系的圆心通过矩形的位移和旋转角，转换至矩形的局部坐标系。此时矩形退化为“轴对齐矩形 (AABB)”。
+- **锚点锁定**：通过 `std::clamp` 将圆心坐标锁定在矩形的半宽半高范围内，得到矩形上距离圆心最近的点。
+- **双态处理**：
+    - **外部状态**：计算圆心与最近点的欧氏距离，判定是否小于半径。
+    - **内部状态 (Inside Case)**：若圆心在矩形内，则通过比较圆心到四条边的距离，选取最短路径作为弹出方向（法线）。
+
+### 2. 鲁棒性与一致性
+- **法线回转**：在局部空间计算出的碰撞法线，通过矩形的旋转矩阵重新旋转回世界坐标系。
+- **分发器模式**：通过 `Dispatch` 函数统一入口，自动处理 `A vs B` 与 `B vs A` 的参数交换，确保 `Manifold` 始终遵循“法线从 A 指向 B”的物理约定。
+
+### 3. 如何验证
+运行 `tests/MixedCollisionTests.cpp`。当前已通过以下严苛场景验证：
+- ✅ **Side Hit**: 圆撞击矩形侧面，穿透深度 `0.200`，法线完美正交。
+- ✅ **Rotated Corner Hit**: 圆撞击旋转 45 度的矩形顶点，穿透深度 `0.414`（$\sqrt{2}-1$），验证了斜向精度。
+- ✅ **Center Inside Box**: 圆心位于矩形内部，算法成功识别并计算出 `1.500` 的深层穿透深度及对应的弹出法线。
+- ✅ **Just Missed**: 边缘临界不接触状态，准确返回 `false`。
+
+**测试输出：**
+```text
+==== Test: Center Inside Box ====
+Result: [ COLLISION! ]
+  Penetration: 1.500
+  Normal:      (1.000, 0.000)
+  Contact Pt:  (0.500, 0.000)
 ```
 
 ## 💻 编译与运行

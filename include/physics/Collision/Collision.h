@@ -8,8 +8,13 @@ struct Projection {
 class Collision
 {
 public:
+
+    // 统一入口：根据 A 和 B 的类型自动选择算法
+    static bool Dispatch(Manifold* m, Body* a, Body* b);
+
     static bool CircleVsCircle(Manifold* m, Body* a, Body* b);
     static bool BoxVsBox(Manifold* m, Body* a, Body* b);
+    static bool CircleVsBox(Manifold* m, Body* circlebody, Body* boxbody);
 
 private:
     static std::vector<Vector2> GetBoxWorldVertices(const Body* body);
@@ -28,5 +33,9 @@ private:
     static Projection GetProjection(const std::vector<Vector2>& vertices, const Vector2& axis);
 
     static float GetOverlap(float minA, float maxA, float minB, float maxB);
+    static bool Inside(Vector2 localPos, float hw, float hh) {
+        // 如果 X 坐标在 [-hw, hw] 之间，且 Y 坐标在 [-hh, hh] 之间
+        return std::abs(localPos.getX()) <= hw && std::abs(localPos.getY()) <= hh;
+    }
 };
 
