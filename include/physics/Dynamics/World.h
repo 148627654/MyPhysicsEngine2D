@@ -3,6 +3,7 @@
 #include "Body.h"
 #include "../Common/Vector2.h"
 #include "../Common/Setting.h"
+#include "../Collision/Manifold.h"
 class World
 {
 public:
@@ -13,4 +14,5 @@ public:
 private:
 	std::vector<Body*> m_bodies;
 	Vector2 m_gravity;
+	std::vector<Manifold> m_manifolds;
 };

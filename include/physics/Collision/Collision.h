@@ -15,7 +15,7 @@ public:
     static bool CircleVsCircle(Manifold* m, Body* a, Body* b);
     static bool BoxVsBox(Manifold* m, Body* a, Body* b);
     static bool CircleVsBox(Manifold* m, Body* circlebody, Body* boxbody);
-
+	static bool AABBvsAABB(const AABB& a , const AABB& b);
 private:
     static std::vector<Vector2> GetBoxWorldVertices(const Body* body);
     // 获取矩形在世界坐标系下的 X 轴方向（指向“右”侧）

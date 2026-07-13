@@ -155,6 +155,15 @@ bool Collision::CircleVsBox(Manifold* m, Body* circlebody, Body* boxbody)
 	return true;
 }
 
+bool Collision::AABBvsAABB(const AABB& a, const AABB& b) {
+	// 逻辑：如果 A 在 B 的右边、左边、上边或下边，则一定没撞
+	if (a.max.getX() < b.min.getX() || a.min.getX() > b.max.getX()) return false;
+	if (a.max.getY() < b.min.getY() || a.min.getY() > b.max.getY()) return false;
+
+	// 否则，说明重叠了
+	return true;
+}
+
 bool Collision::Dispatch(Manifold* m, Body* a, Body* b) {
 	Shape::Type typeA = a->GetShape()->type;
 	Shape::Type typeB = b->GetShape()->type;

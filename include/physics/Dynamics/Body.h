@@ -1,6 +1,7 @@
 #pragma once // 记得加上这个，防止重复包含
 #include "../Common/Vector2.h"
 #include "../Collision/Shape.h"
+//#include "../Collision/Manifold.h"
 class Body
 {
 public:
@@ -24,6 +25,7 @@ public:
 			this->inertia = 0.0f;
 			this->invInertia = 0.0f;
 		}
+		updateAABB( );
 	}
 	inline void ClearForce() { force.Clear(); }
 	Vector2 AddForce(Vector2 f);
@@ -36,13 +38,14 @@ public:
 	float GetRotation()const { return rotation; }
 	void SetRotation(float r) { rotation = r; }
 	void SetVelocity(Vector2 v) { velocity = v; }
-
+	AABB GetAABB( )const { return worldAABB; }
 	//绑定形状并自动计算质量属性
 	void SetShape(Shape* s, float density);
 	//转矩累加
 	float addTorque(float t) { return torque += t; }
 	//力作用于非重心位置会产生转矩，公式为：$Torque = (point - position) \times force$ (2D 叉积)。
 	void ApplyForceAtPoint(Vector2 force, Vector2 worldPoint);
+	void updateAABB( );
 private:
 	Vector2 position;		//当前位置
 	Vector2 velocity;		//当前速度
@@ -61,5 +64,5 @@ private:
 	float invInertia;		//转动惯量的倒数（如果是静态物体，则为 0）。
 	Shape* shape;			//实体
 
-
+	AABB worldAABB;
 };

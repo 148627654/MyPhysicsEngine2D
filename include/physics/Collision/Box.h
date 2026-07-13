@@ -1,5 +1,6 @@
 #pragma once // 记得加上这个，防止重复包含
 #include "Shape.h"
+#include <vector>
 class Box : public Shape
 {
 public:
@@ -7,7 +8,7 @@ public:
 	{
 		type = type_Box;
 	}
-
+	AABB ComputeAABB(Vector2 pos , float angle);
 	float getArea() { return width * height; }
 	MassData ComputeMass(float density);
 

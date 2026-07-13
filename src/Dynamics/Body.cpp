@@ -32,3 +32,9 @@ void Body::ApplyForceAtPoint(Vector2 force, Vector2 worldPoint)
     float t = r.getX() * force.getY() - r.getY() * force.getX();
     addTorque(t);
 }
+
+void Body::updateAABB()
+{
+    if (shape)
+        worldAABB = shape->ComputeAABB(position, rotation);
+}

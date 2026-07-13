@@ -12,17 +12,18 @@ MyPhysicsEngine2D/
 ├── include/            # 头文件 (.h)
 │   └── physics/
 │       ├── Common/     # 基础数学库 (Vector2, Settings)
-│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold) 
+│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold, AABB) <-- 更新
 │       ├── Dynamics/   # 动力学核心 (Body, World)
 │       └── Utils/      # 工具类 (CSVExporter)
 ├── src/                # 源代码 (.cpp)
-│   ├── Collision/      # 碰撞检测算法 (Narrow-phase: Circle, Box, Mixed)    <-- 更新
+│   ├── Collision/      # 窄相 (SAT, Clamping) 与 宽相 (AABB) 算法        <-- 更新
 │   ├── Dynamics/       
 │   └── ...
 ├── tests/              # 单元测试与 Demo 入口
 │   ├── CollisionTests.cpp      # Day 04 圆碰撞测试
 │   ├── BoxCollisionTests.cpp   # Day 05 矩形碰撞测试
-│   └── MixedCollisionTests.cpp # Day 06 混合形状测试                     <-- 新增
+│   ├── MixedCollisionTests.cpp # Day 06 混合形状测试
+│   └── PerformanceTests.cpp    # Day 07 宽相性能基准测试                 <-- 新增
 ├── output/             # 模拟生成的 CSV 数据文件
 ├── scripts/            # Python 可视化脚本 (Matplotlib)
 └── README.md
@@ -60,6 +61,11 @@ MyPhysicsEngine2D/
   - 实现世界坐标系到矩形局部坐标系的逆向变换（反向旋转与平移）。
   - 实现深层穿透处理逻辑（圆心在矩形内部时的法线提取）。
   - 实现碰撞分发器 (Dispatcher) 处理 `Box vs Circle` 的参数交换与法线取反。
+- [x] **Day 07: 宽相过滤 (Broad-phase Filtering)**
+  - 实现 AABB (轴对齐包围盒) 结构及其重叠判定算法。
+  - 为 `Circle` 和 `Box` 实现动态 AABB 计算逻辑（支持旋转变换）。
+  - 在 `World::Step` 中集成 AABB 预检查机制。
+  - 通过 500 规模物体的压力测试验证性能优化效果。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -118,7 +124,7 @@ MyPhysicsEngine2D/
 
 ### 3. 偏心力与转矩 (Eccentric Force)
 实现了 `ApplyForceAtPoint` 接口，模拟力作用于非质心位置产生的物理效果：
-- **力矩合成**： $\vec{\tau} = \vec{r} \times \vec{F}$  (其中 $\vec{r}$ 是从质心到作用点的位移向量)。
+- **力矩合成**： $\vec{\tau} = \vec{r} \times \vec{F}$   (其中 $\vec{r}$ 是从质心到作用点的位移向量)。
 - **物理效果**：当对矩形的顶点施加水平力时，物体在沿抛物线坠落的同时，会根据冲量产生持续的匀速旋转，完美还原了现实中的“翻滚”现象。
 ---
 ### 4. 验证结果
@@ -138,7 +144,7 @@ MyPhysicsEngine2D/
 ### 2. 圆 vs 圆 检测算法
 通过比较两圆心欧几里得距离 $d$ 与半径之和 $R_1 + R_2$ 进行判定。
 - **鲁棒性处理**：
-  针对**同心圆（ $d=0$ ）**的情况，通过手动强制指定法线 `(0, 1)`，避免了归一化导致的 `NaN` 崩溃问题。
+  针对**同心圆（  $d=0$  ）**的情况，通过手动强制指定法线 `(0, 1)`，避免了归一化导致的 `NaN` 崩溃问题。
 
 ### 3. 如何验证
 运行 `tests/CollisionTests.cpp`。当前已通过以下严苛测试用例：
@@ -209,9 +215,40 @@ Result: [ COLLISION! ]
   Normal:      (1.000, 0.000)
   Contact Pt:  (0.500, 0.000)
 ```
+## 🚀 Day 07 进展：宽相过滤与性能优化
+
+### 1. 技术核心：AABB 预检查系统
+为了解决碰撞检测中 $O(N^2)$ 几何运算导致的性能瓶颈，引入了宽相过滤机制：
+- **动态包围盒更新**：每个 `Body` 持有一个世界坐标系的 `AABB`。在每一帧物理积分（位置更新）后，立即重新计算包围盒。对于旋转矩形，其 AABB 会根据旋转后的 4 个顶点动态伸缩。
+- **低成本判定**：在进入昂贵的 SAT 或最近点计算前，先进行 AABB 判定。只需 4 次浮点数比较即可排除不相交的物体。
+
+### 2. 性能基准测试结果
+使用 500 个随机分布的刚体进行压力测试，对比开启宽相过滤前后的表现：
+- **窄相调用次数**：从 **124,750 次** 锐减至 **1 次**（跳过率 **99.999%**）。
+- **执行耗时**：从 **61.32 ms** 降至 **4.75 ms**。
+- **性能提升**：计算效率提升了约 **12.9 倍**。
+- **结论**：宽相过滤极大地降低了引擎的计算负荷，为后续处理复杂堆叠和大规模约束奠定了性能基础。
+
+**测试输出：**
+```text
+==== Day 07: Broadphase (AABB) Performance Test ====
+Testing with 500 bodies...
+
+[Test 1: No Filtering]
+  Narrowphase checks: 124750
+  Execution Time:     61.3243 ms
+
+[Test 2: With AABB Filtering]
+  Narrowphase checks: 1
+  Skipped checks:      124749 (99.9992%)
+  Execution Time:     4.7559 ms
+
+Performance Boost: 12.8944x faster!
+```
 
 ## 💻 编译与运行
 1. 使用 **Visual Studio 2019/2022** 打开解决方案。
 2. 确保项目属性中 `Additional Include Directories` 包含 `$(ProjectDir)include`。
 3. 设置 C++ 标准为 **ISO C++11**。
 ---
+
