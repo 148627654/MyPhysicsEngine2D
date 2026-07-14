@@ -271,7 +271,7 @@ Performance Boost: 12.8944x faster!
   - 运行 `python scripts/visualize_008.py` 生成轨迹分析图。
 
 **测试分析图展示：**
-![[day08_visualization.png]]
+![这是图片](readme.assets/day08_visualization.png)
 ## 💻 编译与运行
 1. 使用 **Visual Studio 2019/2022** 打开解决方案。
 2. 确保项目属性中 `Additional Include Directories` 包含 `$(ProjectDir)include`。
