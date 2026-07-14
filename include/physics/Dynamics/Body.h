@@ -39,6 +39,7 @@ public:
 	void SetRotation(float r) { rotation = r; }
 	void SetVelocity(Vector2 v) { velocity = v; }
 	AABB GetAABB( )const { return worldAABB; }
+	float getAngularVelocity( )const { return angularVelocity; }
 	//绑定形状并自动计算质量属性
 	void SetShape(Shape* s, float density);
 	//转矩累加

@@ -1,6 +1,6 @@
 #include "World.h"
 #include "../Collision/Collision.h"
-
+#include "../Utils/Logger.h"
 void World::Step(float dt)
 {
 	//遍历每一个实体
@@ -49,6 +49,7 @@ void World::Step(float dt)
 			if (Collision::Dispatch(&m, a, b)) {
 				// 如果撞了，把这个流形存入列表
 				m_manifolds.push_back(m);
+				Logger::LogCollision(m);
 			}
 		}
 	}

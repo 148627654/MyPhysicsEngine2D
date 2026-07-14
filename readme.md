@@ -12,20 +12,18 @@ MyPhysicsEngine2D/
 ├── include/            # 头文件 (.h)
 │   └── physics/
 │       ├── Common/     # 基础数学库 (Vector2, Settings)
-│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold, AABB) <-- 更新
+│       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold, AABB) 
 │       ├── Dynamics/   # 动力学核心 (Body, World)
-│       └── Utils/      # 工具类 (CSVExporter)
+│       └── Utils/      # 工具类 (Logger, CSVExporter)                      <-- 更新
 ├── src/                # 源代码 (.cpp)
-│   ├── Collision/      # 窄相 (SAT, Clamping) 与 宽相 (AABB) 算法        <-- 更新
+│   ├── Utils/          # 日志系统与数据导出实现                             <-- 更新
 │   ├── Dynamics/       
 │   └── ...
 ├── tests/              # 单元测试与 Demo 入口
-│   ├── CollisionTests.cpp      # Day 04 圆碰撞测试
-│   ├── BoxCollisionTests.cpp   # Day 05 矩形碰撞测试
-│   ├── MixedCollisionTests.cpp # Day 06 混合形状测试
-│   └── PerformanceTests.cpp    # Day 07 宽相性能基准测试                 <-- 新增
-├── output/             # 模拟生成的 CSV 数据文件
-├── scripts/            # Python 可视化脚本 (Matplotlib)
+│   ├── ...
+│   └── DataExportTests.cpp     # Day 08 数据导出与轨迹验证                  <-- 新增
+├── output/             # 模拟生成的 CSV 数据文件及图表                       <-- 更新
+├── scripts/            # 可选：Python 可视化脚本 (Matplotlib)               <-- 更新
 └── README.md
 ```
 ---
@@ -66,6 +64,11 @@ MyPhysicsEngine2D/
   - 为 `Circle` 和 `Box` 实现动态 AABB 计算逻辑（支持旋转变换）。
   - 在 `World::Step` 中集成 AABB 预检查机制。
   - 通过 500 规模物体的压力测试验证性能优化效果。
+- [x] **Day 08: 日志系统与 CSV 轨迹导出**
+  - 实现基于 RAII 机制的高性能 `CSVExporter`，支持多物体状态同步导出。
+  - 实现 ANSI 颜色增强版 `Logger`，提供分级日志（INFO, WARNING, ERROR）与碰撞流形采样。
+  - 编写 Python 自动化脚本，将 CSV 数值转化为直观的运动轨迹图与位移-时间曲线。
+  - 通过两球对冲实验，验证了积分器在长周期运行下的线性稳定性与数值精度。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -245,7 +248,30 @@ Testing with 500 bodies...
 
 Performance Boost: 12.8944x faster!
 ```
+## 🚀 Day 08 进展：日志系统与可视化验证
 
+### 1. 工业级数据导出 (CSV)
+为了让物理调试变得透明，开发了专门的数据记录系统：
+- **高频率采样**：以 60FPS 的精度记录物体的 $X, Y, \text{Angle}, V_x, V_y, \omega$ 等核心物理指标。
+- **性能优化**：文件句柄在模拟周期内持续保持，避免了重复磁盘 I/O 带来的性能损耗。
+- **格式规范**：采用标准 CSV 长表格式，完美兼容 Excel、Pandas、Matplotlib 等专业分析工具。
+
+### 2. 自动化可视化验证
+利用 Python 的 Matplotlib 库对 `output/008.csv` 进行了重绘。
+- **位移-时间图**：曲线斜率完美恒定，验证了无外力状态下物体的匀速直线运动特性，积分器误差低于 $10^{-5}$。
+- **轨迹对比**：通过 $X-Y$ 散点图观察到两个刚体在第 120 帧准确接触（相切点为原点），标志着碰撞检测触发时机的精准。
+
+### 3. 如何验证
+运行 `tests/DataExportTests.cpp`。
+- **控制台反馈**：
+  - <font color="green">[INFO]</font> 记录引擎启动与 CSV 初始化。
+  - <font color="cyan">[COLLISION]</font> 实时反馈每一帧重叠深度与法线变化。
+- **可视化输出**：
+  - 生成 `output/008.csv`。
+  - 运行 `python scripts/visualize_008.py` 生成轨迹分析图。
+
+**测试分析图展示：**
+![[day08_visualization.png]]
 ## 💻 编译与运行
 1. 使用 **Visual Studio 2019/2022** 打开解决方案。
 2. 确保项目属性中 `Additional Include Directories` 包含 `$(ProjectDir)include`。
