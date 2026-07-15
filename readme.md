@@ -69,6 +69,13 @@ MyPhysicsEngine2D/
   - 实现 ANSI 颜色增强版 `Logger`，提供分级日志（INFO, WARNING, ERROR）与碰撞流形采样。
   - 编写 Python 自动化脚本，将 CSV 数值转化为直观的运动轨迹图与位移-时间曲线。
   - 通过两球对冲实验，验证了积分器在长周期运行下的线性稳定性与数值精度。
+### 第 3 阶段：冲量响应与解算器
+- [x] **Day 09: 线性冲量解算与弹性碰撞 (Impulse Resolution)**
+  - 实现基于 **Newton's Law of Restitution** 的标量冲量计算。
+  - 实现 `ApplyImpulse` 接口，支持速度矢量的瞬时改变。
+  - 引入 `restitution` (恢复系数) 处理能量损耗。
+  - 完善静态物体判定，支持与质量无穷大（`invMass=0`）的地面的碰撞逻辑。
+  - 解决法向速度分离判定，消除碰撞后的“粘滞”异常。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -271,10 +278,34 @@ Performance Boost: 12.8944x faster!
   - 运行 `python scripts/visualize_008.py` 生成轨迹分析图。
 
 **测试分析图展示：**
+
 ![这是图片](readme.assets/day08_visualization.png)
+## 🚀 Day 09 进展：冲量解算与动力学响应
+
+### 1. 核心算法：线性冲量解算 (Impulse Solver)
+为了让物体在碰撞后产生真实的物理反馈，实现了冲量解算器：
+- **物理公式**：
+  $$j = \frac{-(1+e)(\vec{v}_{rel} \cdot \vec{n})}{\frac{1}{m_A} + \frac{1}{m_B}}$$
+  其中 $e$ 为恢复系数，$\vec{n}$ 为碰撞法线。
+- **动量守恒**：通过对碰撞双方施加等大反向的冲量矢量，确保了系统在闭环状态下的动量守恒。
+
+### 2. 多体反弹实验验证
+通过 `tests/ImpulseResolutionTests.cpp` 模拟了三球对冲并坠落地面的复杂场景：
+- **速度突变验证**：在垂直速度图中（见下文），可以清晰观测到速度在碰撞瞬间发生的阶跃式跳变，且跳变比例与设定的 `restitution = 0.8` 严格吻合。
+- **静态地面交互**：动态球体与 `invMass=0` 的 Box（地面）接触时，地面保持绝对静止，球体按比例反弹，验证了质量倒数逻辑的健壮性。
+
+### 3. 可视化分析
+![这是图片](readme.assets/day09_multi_test.png))
+*上图：多物体运动轨迹（Top）与垂直速度变化曲线（Bottom）。速度曲线的“阶跃”标志着冲量解算的精准触发。*
+
 ## 💻 编译与运行
 1. 使用 **Visual Studio 2019/2022** 打开解决方案。
 2. 确保项目属性中 `Additional Include Directories` 包含 `$(ProjectDir)include`。
 3. 设置 C++ 标准为 **ISO C++11**。
 ---
 
+### 💡 备注与工程观察
+在 Day 09 的测试中，观测到了物理引擎中的典型现象：
+1. **Sinking (深陷)**：由于目前尚未实现位置修正，物体在静止堆叠时会因为重力逐渐渗入地面。
+2. **Jitter (抖动)**：低速状态下的频繁反弹导致了速度震荡。
+这些现象是**正常且符合预期**的，将在 **Day 11 (Position Correction)** 中通过穿透补偿算法予以解决。

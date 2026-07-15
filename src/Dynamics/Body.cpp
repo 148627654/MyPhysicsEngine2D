@@ -38,3 +38,8 @@ void Body::updateAABB()
     if (shape)
         worldAABB = shape->ComputeAABB(position, rotation);
 }
+
+void Body::ApplyImpulse(Vector2 impulse)
+{
+    velocity = velocity + impulse * invMass;
+}

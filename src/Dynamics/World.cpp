@@ -1,6 +1,7 @@
 #include "World.h"
 #include "../Collision/Collision.h"
 #include "../Utils/Logger.h"
+#include "../../include/physics/Dynamics/Solver.h"
 void World::Step(float dt)
 {
 	//遍历每一个实体
@@ -52,5 +53,8 @@ void World::Step(float dt)
 				Logger::LogCollision(m);
 			}
 		}
+	}
+	for (auto& m : m_manifolds) {
+		ImpulseSolver(m);
 	}
 }

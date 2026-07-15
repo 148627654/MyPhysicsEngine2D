@@ -42,11 +42,15 @@ public:
 	float getAngularVelocity( )const { return angularVelocity; }
 	//绑定形状并自动计算质量属性
 	void SetShape(Shape* s, float density);
+	inline float getRestitution( )const { return restitution; }
+	inline void setRestitution(float e) { restitution = e; }
+	inline float getInvMass( )const { return invMass; }
 	//转矩累加
 	float addTorque(float t) { return torque += t; }
 	//力作用于非重心位置会产生转矩，公式为：$Torque = (point - position) \times force$ (2D 叉积)。
 	void ApplyForceAtPoint(Vector2 force, Vector2 worldPoint);
 	void updateAABB( );
+	void ApplyImpulse(Vector2 impulse);
 private:
 	Vector2 position;		//当前位置
 	Vector2 velocity;		//当前速度
@@ -66,4 +70,7 @@ private:
 	Shape* shape;			//实体
 
 	AABB worldAABB;
+
+	//冲量 牛顿恢复定律
+	float restitution;
 };
