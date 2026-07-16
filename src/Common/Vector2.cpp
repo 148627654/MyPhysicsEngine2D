@@ -106,6 +106,22 @@ Vector2 Vector2::Rotate(float angle) const
 	return Vector2(newX, newY);
 }
 
+float Vector2::Cross(const Vector2& a, const Vector2& b)
+{
+	return a.getX() * b.getY() - a.getY() * b.getX();
+}
+//`Vector2(x, y) × Scalar(w)` = `Vector2(w * y, -w * x)`
+Vector2 Vector2::Cross(const Vector2& a, const float b)
+{
+
+	return Vector2(b*a.getY(),-b*a.getX());
+}
+//`Scalar(w) × Vector2(x, y)` = `Vector2(-w * y, w * x)`
+Vector2 Vector2::Cross(const float a, const Vector2& b)
+{
+	return Vector2(-a*b.getY(),a*b.getX());
+}
+
 
 Vector2 operator*(float num, const Vector2& vec)
 {

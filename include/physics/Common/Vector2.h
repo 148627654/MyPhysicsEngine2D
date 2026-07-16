@@ -43,6 +43,11 @@ public:
 	Vector2 GetRightNormal() const { return Vector2(y, -x); }
 	// 旋转
 	Vector2 Rotate(float angle) const;
+
+	//叉积简化
+	static float Cross(const Vector2& a , const Vector2& b);
+	static Vector2 Cross(const Vector2& a , const float b);
+	static Vector2 Cross(const float a,const Vector2& b);
 private:
 	float x;
 	float y;

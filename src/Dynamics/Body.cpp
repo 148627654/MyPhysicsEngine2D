@@ -41,5 +41,5 @@ void Body::updateAABB()
 
 void Body::ApplyImpulse(Vector2 impulse)
 {
-    velocity = velocity + impulse * invMass;
+    velocity += impulse * invMass;
 }

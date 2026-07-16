@@ -41,7 +41,7 @@ bool Collision::BoxVsBox(Manifold* m, Body* a, Body* b)
 	Vector2 bestAxis;           // 记录产生最小重叠的轴
 	//A,B的四个点，AB分别两个轴
 	auto aWorldVertices = GetBoxWorldVertices(a);
-	auto bWorldVertices=GetBoxWorldVertices(b);
+	auto bWorldVertices = GetBoxWorldVertices(b);
 	Vector2 axes[4] = { GetBodyAxisX(a), GetBodyAxisY(a), GetBodyAxisX(b), GetBodyAxisY(b) };
 
 	for (int i = 0; i < 4; i++) {
@@ -63,7 +63,7 @@ bool Collision::BoxVsBox(Manifold* m, Body* a, Body* b)
 		}
 	}
 
-	//撞了
+	// 填充流形基本信息
 	m->bodyA = a;
 	m->bodyB = b;
 	m->penetration = minOverlap;
@@ -74,6 +74,23 @@ bool Collision::BoxVsBox(Manifold* m, Body* a, Body* b)
 	if (dir.Dot(m->normal) < 0) {
 		m->normal = m->normal * -1.0f;
 	}
+
+	// --- [新增：解决崩溃与旋转的核心代码] ---
+	m->contacts.clear();
+	// 寻找 A 的 4 个顶点中，在法线方向上最深入 B 的点
+	// 逻辑：法线是从 A 指向 B 的，所以 A 里面 Dot 值最大的点就是最靠近 B 的点
+	float maxDot = -FLT_MAX;
+	Vector2 bestContact = aWorldVertices[0];
+
+	for (const auto& v : aWorldVertices) {
+		float dot = v.Dot(m->normal);
+		if (dot > maxDot) {
+			maxDot = dot;
+			bestContact = v;
+		}
+	}
+	m->contacts.push_back(bestContact);
+	// ---------------------------------------
 
 	return true;
 }

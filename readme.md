@@ -11,19 +11,19 @@ MyPhysicsEngine2D/
 ├── docs/               # 物理公式推导与设计文档
 ├── include/            # 头文件 (.h)
 │   └── physics/
-│       ├── Common/     # 基础数学库 (Vector2, Settings)
+│       ├── Common/     # 基础数学库 (Vector2 包含 2D 叉积)             <-- 更新
 │       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold, AABB) 
-│       ├── Dynamics/   # 动力学核心 (Body, World)
-│       └── Utils/      # 工具类 (Logger, CSVExporter)                      <-- 更新
+│       ├── Dynamics/   # 动力学核心 (Body, World, Solver)
+│       └── Utils/      # 工具类 (Logger, CSVExporter)
 ├── src/                # 源代码 (.cpp)
-│   ├── Utils/          # 日志系统与数据导出实现                             <-- 更新
-│   ├── Dynamics/       
+│   ├── Dynamics/       # 冲量响应与旋转动力学实现                      <-- 更新
+│   ├── Collision/      # 接触点生成逻辑 (Contact Generation)           <-- 更新
 │   └── ...
 ├── tests/              # 单元测试与 Demo 入口
 │   ├── ...
-│   └── DataExportTests.cpp     # Day 08 数据导出与轨迹验证                  <-- 新增
-├── output/             # 模拟生成的 CSV 数据文件及图表                       <-- 更新
-├── scripts/            # 可选：Python 可视化脚本 (Matplotlib)               <-- 更新
+│   └── AngularImpulseTests.cpp # Day 10 旋转翻滚验证测试              <-- 新增
+├── output/             # 模拟生成的 CSV 数据文件及图表
+├── scripts/            # Python 可视化脚本 (新增旋转分析脚本)            <-- 更新
 └── README.md
 ```
 ---
@@ -76,6 +76,12 @@ MyPhysicsEngine2D/
   - 引入 `restitution` (恢复系数) 处理能量损耗。
   - 完善静态物体判定，支持与质量无穷大（`invMass=0`）的地面的碰撞逻辑。
   - 解决法向速度分离判定，消除碰撞后的“粘滞”异常。
+- [x] **Day 10: 旋转冲量与偏心碰撞响应 (Angular Impulse)**
+  - 扩展 2D 叉积运算，支持标量与向量的耦合计算。
+  - 引入接触点速度公式：$\vec{v}_p = \vec{v} + \omega \times \vec{r}$。
+  - 升级 `ImpulseSolver`，在冲量分母中引入转动惯量产生的阻力项。
+  - 实现接触点（Contact Point）生成逻辑，支持偏心力矩计算。
+  - 通过倾斜木板撞地实验，验证了平动动能向转动动能的物理转化。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -297,7 +303,23 @@ Performance Boost: 12.8944x faster!
 ### 3. 可视化分析
 ![这是图片](readme.assets/day09_multi_test.png))
 *上图：多物体运动轨迹（Top）与垂直速度变化曲线（Bottom）。速度曲线的“阶跃”标志着冲量解算的精准触发。*
+## 🚀 Day 10 进展：旋转冲量与偏心响应
 
+### 1. 核心技术：刚体翻滚逻辑
+为了实现物体撞击边缘后的旋转效果，对解算器进行了深度重构：
+- **接触点速度耦合**：解算依据不再是质心速度，而是接触点处的瞬时速度。这使得旋转状态会直接影响碰撞强度。
+- **旋转项分母**：
+  $$j = \frac{-(1+e)(\vec{v}_{rel} \cdot \vec{n})}{\frac{1}{m_A} + \frac{1}{m_B} + \frac{(\vec{r}_A \times \vec{n})^2}{I_A} + \frac{(\vec{r}_B \times \vec{n})^2}{I_B}}$$
+  该公式完美描述了“偏心距越大，产生的转动越多，平动反弹越弱”的物理直觉。
+
+### 2. 实验验证：倾斜木板跌落
+使用一个长宽比为 $8:1$ 的倾斜木板进行自由落体撞击地面实验：
+- **角速度跳变**：在 Python 生成的角速度图中，可以清晰看到在碰撞瞬间 $\omega$ 从 0 突变为非零常数。
+- **持续旋转**：位移图中显示木板在反弹后维持匀速翻滚状态，证明了角动量在离散时间步长下的稳定性。
+
+### 3. 可视化分析
+![Day 10 Rotation Proof](readme.assets/day10_rotation_proof.png)
+*上图：角速度跳变曲线（Top）与角度随时间的线性演化（Bottom），证实了偏心碰撞产生的力矩效应。*
 ## 💻 编译与运行
 1. 使用 **Visual Studio 2019/2022** 打开解决方案。
 2. 确保项目属性中 `Additional Include Directories` 包含 `$(ProjectDir)include`。
@@ -309,3 +331,4 @@ Performance Boost: 12.8944x faster!
 1. **Sinking (深陷)**：由于目前尚未实现位置修正，物体在静止堆叠时会因为重力逐渐渗入地面。
 2. **Jitter (抖动)**：低速状态下的频繁反弹导致了速度震荡。
 这些现象是**正常且符合预期**的，将在 **Day 11 (Position Correction)** 中通过穿透补偿算法予以解决。
+
