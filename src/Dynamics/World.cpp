@@ -56,5 +56,9 @@ void World::Step(float dt)
 	}
 	for (auto& m : m_manifolds) {
 		ImpulseSolver(m);
+		
+	}
+	for (auto& m : m_manifolds) {
+		PositionalCorrection(m);
 	}
 }

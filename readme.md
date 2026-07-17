@@ -11,19 +11,18 @@ MyPhysicsEngine2D/
 ├── docs/               # 物理公式推导与设计文档
 ├── include/            # 头文件 (.h)
 │   └── physics/
-│       ├── Common/     # 基础数学库 (Vector2 包含 2D 叉积)             <-- 更新
+│       ├── Common/     # 基础数学库与全局配置 (Setting.h)              <-- 更新
 │       ├── Collision/  # 碰撞几何体 (Shape, Circle, Box, Manifold, AABB) 
 │       ├── Dynamics/   # 动力学核心 (Body, World, Solver)
 │       └── Utils/      # 工具类 (Logger, CSVExporter)
 ├── src/                # 源代码 (.cpp)
-│   ├── Dynamics/       # 冲量响应与旋转动力学实现                      <-- 更新
-│   ├── Collision/      # 接触点生成逻辑 (Contact Generation)           <-- 更新
+│   ├── Dynamics/       # 冲量响应、位置修正与解算流水线                  <-- 更新
+│   ├── Collision/      # 接触点生成逻辑 (Contact Generation)
 │   └── ...
 ├── tests/              # 单元测试与 Demo 入口
 │   ├── ...
-│   └── AngularImpulseTests.cpp # Day 10 旋转翻滚验证测试              <-- 新增
+│   └── StackingTests.cpp   # Day 11 静态堆叠与稳定性测试                <-- 新增
 ├── output/             # 模拟生成的 CSV 数据文件及图表
-├── scripts/            # Python 可视化脚本 (新增旋转分析脚本)            <-- 更新
 └── README.md
 ```
 ---
@@ -82,6 +81,11 @@ MyPhysicsEngine2D/
   - 升级 `ImpulseSolver`，在冲量分母中引入转动惯量产生的阻力项。
   - 实现接触点（Contact Point）生成逻辑，支持偏心力矩计算。
   - 通过倾斜木板撞地实验，验证了平动动能向转动动能的物理转化。
+- [x] **Day 11: 位置修正与 Baumgarte 稳定化 (Position Correction)**
+  - 引入 `PENETRATION_ALLOWANCE` (Slop) 消除微小重叠引起的抖动。
+  - 实现 Baumgarte 稳定化算法，通过直接修改坐标修复穿透。
+  - 解决物体长周期运行下的“深陷地表”问题。
+  - 验证静态堆叠稳定性，为多体堆叠打下坚实基础。
 ---
 ## 🚀 Day 01进展：Vector2 核心库
 ### 1. 技术选型
@@ -320,6 +324,27 @@ Performance Boost: 12.8944x faster!
 ### 3. 可视化分析
 ![Day 10 Rotation Proof](readme.assets/day10_rotation_proof.png)
 *上图：角速度跳变曲线（Top）与角度随时间的线性演化（Bottom），证实了偏心碰撞产生的力矩效应。*
+
+## 🚀 Day 11 进展：位置修正与稳定性提升
+
+### 1. 技术核心：Baumgarte 稳定化
+由于离散时间步长和引力的持续作用，物体在静止堆叠时会产生数值漂移，导致物体慢慢“沉入”地面。Day 11 引入了位置修正（Positional Correction）逻辑：
+- **修正公式**：
+  $$\text{correction} = \frac{\max(\text{penetration} - \text{slop}, 0)}{\sum \text{invMass}} \times \text{bias}$$
+- **Slop (容忍区)**：设定 `0.01~0.05` 的容忍范围，只有穿透深度超过此值时才触发修正，有效解决了物体静止时的微高频抖动（Jitter）。
+- **Bias (修正率)**：通常设定为 `0.2~0.5`（即每帧修复 20%-50% 的重叠），避免了一次性强制推开导致的“爆炸式”弹开，保证了视觉上的丝滑平稳。
+
+### 2. 解算器流水线集成
+位置修正被放置在 `ImpulseSolver` 之后、`Step` 结束之前。这种“先改速度，再改位置”的策略，确保了物理模拟在每一帧结束时都能维持在一个“合法”的非重叠状态。
+
+### 3. 实验验证：长周期落地测试
+通过 `tests/StackingTests.cpp` 模拟了一个木板掉落在无限宽地面上的场景，并运行了 300 帧（5秒）：
+- **下陷修复验证**：在未开启修正前，木板在 300 帧后会下沉至 -54.0；开启修正后，位移曲线（见下文蓝线）在碰撞瞬间发生微调，随后**完美锁定在理论接触高度（-3.0）**，误差波动保持在 $10^{-3}$ 数量级。
+- **静态平衡**：观测速度分析图，发现垂直速度 $V_y$ 最终在 0 附近呈极微小的阻尼震荡并趋于静止，证明了重力与修正力达成了数值动态平衡。
+
+### 4. 可视化分析
+![Day 11 Positional Stability](readme.assets/day11_test_result.png)
+*上图：位移稳定性测试（Top）。蓝线在碰撞后立刻与红虚线（预期高度）对齐并保持绝对平行，证明了位置修正的有效性。*
 ## 💻 编译与运行
 1. 使用 **Visual Studio 2019/2022** 打开解决方案。
 2. 确保项目属性中 `Additional Include Directories` 包含 `$(ProjectDir)include`。
@@ -331,4 +356,7 @@ Performance Boost: 12.8944x faster!
 1. **Sinking (深陷)**：由于目前尚未实现位置修正，物体在静止堆叠时会因为重力逐渐渗入地面。
 2. **Jitter (抖动)**：低速状态下的频繁反弹导致了速度震荡。
 这些现象是**正常且符合预期**的，将在 **Day 11 (Position Correction)** 中通过穿透补偿算法予以解决。
+
+
+
 

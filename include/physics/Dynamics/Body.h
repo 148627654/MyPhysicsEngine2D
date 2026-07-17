@@ -31,7 +31,8 @@ public:
 	Vector2 AddForce(Vector2 f);
 	friend class World;
 	// 方便外部（如日志系统）读取数据
-	void SetPosition(float x, float y) { position = Vector2(x, y); }
+	void SetPosition(float x , float y) { position = Vector2(x , y); }
+	void SetPosition(Vector2 &v) { position = v; }
 	Vector2 GetPosition() const { return position; }
 	Vector2 GetVelocity() const { return velocity; }
 	Shape* GetShape()const { return shape; };

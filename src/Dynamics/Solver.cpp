@@ -3,6 +3,9 @@
 #include <iostream>
 #include "../../include/physics/Dynamics/Body.h"
 #include <CSVExporter.h>
+#include "Solver.h"
+#include "../../include/physics/Common/Setting.h"
+#include <algorithm>
 
 void ImpulseSolver(Manifold& m) {
     if (m.contacts.empty()) return;
@@ -48,4 +51,25 @@ void ImpulseSolver(Manifold& m) {
     // 转动更新（必须手动更新角速度）
     a->setAngularVelocity(a->getAngularVelocity() - Vector2::Cross(rA, impulseVector) * a->getInvInertia());
     b->setAngularVelocity(b->getAngularVelocity() + Vector2::Cross(rB, impulseVector) * b->getInvInertia());
+}
+
+//实现位置修正函数
+/*
+$$\text{correction} = \frac{\max(\text{penetration} - \text{slop}, 0)}
+                    {\text{invMassA} + \text{invMassB}} \times \text{bias}$$
+*/
+void PositionalCorrection(Manifold& m)
+{
+    float slot = ::Settings::PENETRATION_ALLOWANCE;
+    float bias = ::Settings::BIAS;
+
+    float suminvmass = (m.bodyA)->getInvMass() + (m.bodyB)->getInvMass();
+    if (suminvmass < 0.0001f) return;
+    float correction = std::max(m.penetration - slot, 0.0f) / suminvmass * bias;
+
+    Vector2 posA = m.bodyA->GetPosition() - correction * ((m.bodyA)->getInvMass()) * m.normal;
+    m.bodyA->SetPosition(posA);
+
+    Vector2 posB = m.bodyB->GetPosition() + correction * ((m.bodyB)->getInvMass()) * m.normal;
+    m.bodyB->SetPosition(posB);
 }
