@@ -43,3 +43,8 @@ void Body::ApplyImpulse(Vector2 impulse)
 {
     velocity += impulse * invMass;
 }
+
+void Body::ApplyImpulse(const Vector2& impulse, const Vector2& contactVector) {
+    velocity += impulse * invMass;
+    angularVelocity += invInertia * Vector2::Cross(contactVector, impulse);
+}

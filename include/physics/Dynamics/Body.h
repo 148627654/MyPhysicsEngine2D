@@ -25,6 +25,8 @@ public:
 			this->inertia = 0.0f;
 			this->invInertia = 0.0f;
 		}
+		this->restitution = 0.5f; // 默认弹力 0.5
+		this->friction = 0.2f;    // 默认摩擦 0.2
 		updateAABB( );
 	}
 	inline void ClearForce() { force.Clear(); }
@@ -54,6 +56,9 @@ public:
 	void ApplyForceAtPoint(Vector2 force, Vector2 worldPoint);
 	void updateAABB( );
 	void ApplyImpulse(Vector2 impulse);
+	void ApplyImpulse(const Vector2& impulse , const Vector2& contactVector);
+	inline float getFriction( ) const { return friction; }
+	inline void setFriction(float f) { friction = f; }
 private:
 	Vector2 position;		//当前位置
 	Vector2 velocity;		//当前速度
@@ -76,4 +81,7 @@ private:
 
 	//冲量 牛顿恢复定律
 	float restitution;
+
+	float friction;    // 摩擦系数，建议范围 0.0 ~ 1.0 \mu
+
 };

@@ -37,5 +37,7 @@ private:
         // 如果 X 坐标在 [-hw, hw] 之间，且 Y 坐标在 [-hh, hh] 之间
         return std::abs(localPos.getX()) <= hw && std::abs(localPos.getY()) <= hh;
     }
+	static void FindIncidentEdge(Vector2 out[ 2 ] , const std::vector<Vector2>& vertices , Vector2 normal);
+	static bool IsPointInBody(Vector2 p , Body* b);
 };
 

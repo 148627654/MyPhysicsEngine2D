@@ -19,80 +19,149 @@ bool Collision::CircleVsCircle(Manifold* m, Body* a, Body* b)
 		return false;
 	//碰到了
 	float distance = std::sqrt(disSq);
+	m->contactCount = 1;
 	if (distance != 0)//圆心没重合
 	{
 		m->penetration = relativeradius - distance;//穿透深度
 		//碰撞法线,归一化
 		m->normal = relativePos / distance;
-		m->contacts.push_back(a->GetPosition() + m->normal * shapeA->getR());
+		m->contacts[0] = a->GetPosition() + m->normal * shapeA->getR();
+		//m->contacts.push_back(a->GetPosition() + m->normal * shapeA->getR());
 	}
 	else//如果为0，就代表圆心重合
 	{
 		m->penetration = shapeA->getR();
 		m->normal= Vector2(1, 0);       // 强制给个法线防止报错
-		m->contacts.push_back(a->GetPosition());
+		m->contacts[0] = a->GetPosition();
+		//m->contacts.push_back(a->GetPosition());
 	}
+	// 初始化冲量缓存
+	m->impulseN[0] = 0.0f;
+	m->impulseT[0] = 0.0f;
 	return true;
 }
 
 bool Collision::BoxVsBox(Manifold* m, Body* a, Body* b)
 {
-	float minOverlap = FLT_MAX; // 初始化为一个很大的数
-	Vector2 bestAxis;           // 记录产生最小重叠的轴
-	//A,B的四个点，AB分别两个轴
+	float minOverlap = FLT_MAX;
+	int bestAxisIndex = -1;
+
 	auto aWorldVertices = GetBoxWorldVertices(a);
 	auto bWorldVertices = GetBoxWorldVertices(b);
 	Vector2 axes[4] = { GetBodyAxisX(a), GetBodyAxisY(a), GetBodyAxisX(b), GetBodyAxisY(b) };
 
+	// 1. SAT 寻找最小穿透轴
 	for (int i = 0; i < 4; i++) {
 		Vector2 axis = axes[i];
 		Projection projA = GetProjection(aWorldVertices, axis);
 		Projection projB = GetProjection(bWorldVertices, axis);
 
 		float overlap = GetOverlap(projA.min, projA.max, projB.min, projB.max);
+		if (overlap <= 0) return false;
 
-		if (overlap < 0) {
-			// 只要发现一条轴没重叠，立刻判定没撞
-			return false;
-		}
-
-		// 3. 寻找最小穿透量 (MTV)
 		if (overlap < minOverlap) {
 			minOverlap = overlap;
-			bestAxis = axis;
+			bestAxisIndex = i;
 		}
 	}
 
-	// 填充流形基本信息
-	m->bodyA = a;
-	m->bodyB = b;
 	m->penetration = minOverlap;
-	m->normal = bestAxis;
+	Vector2 normal = axes[bestAxisIndex];
 
-	// 5. 修正法线方向：确保法线是从 A 指向 B
+	// 确保法线从 A 指向 B
 	Vector2 dir = b->GetPosition() - a->GetPosition();
-	if (dir.Dot(m->normal) < 0) {
-		m->normal = m->normal * -1.0f;
+	if (dir.Dot(normal) < 0) normal = normal * -1.0f;
+	m->normal = normal;
+
+	// 2. 确定哪个是参考物 (Reference)，哪个是入射物 (Incident)
+	// 参考物：贡献了碰撞法线的物体
+	// 入射物：提供碰撞顶点的物体
+	Body* refBody;
+	Body* incBody;
+	if (bestAxisIndex < 2) { // 轴属于 A
+		refBody = a;
+		incBody = b;
+	}
+	else { // 轴属于 B
+		refBody = b;
+		incBody = a;
 	}
 
-	// --- [新增：解决崩溃与旋转的核心代码] ---
-	m->contacts.clear();
-	// 寻找 A 的 4 个顶点中，在法线方向上最深入 B 的点
-	// 逻辑：法线是从 A 指向 B 的，所以 A 里面 Dot 值最大的点就是最靠近 B 的点
-	float maxDot = -FLT_MAX;
-	Vector2 bestContact = aWorldVertices[0];
+	// 3. 寻找入射边 (Incident Edge)
+	// 入射边是入射物上最对准法线反方向的那条边
+	auto incVertices = (incBody == a) ? aWorldVertices : bWorldVertices;
+	Vector2 incidentEdge[2];
+	FindIncidentEdge(incidentEdge, incVertices, m->normal);
 
-	for (const auto& v : aWorldVertices) {
-		float dot = v.Dot(m->normal);
-		if (dot > maxDot) {
-			maxDot = dot;
-			bestContact = v;
-		}
+	// 4. 裁剪并填充接触点 (Clipping)
+	// 这里使用简化逻辑：在入射边的两个顶点中，
+	// 找出所有在“穿透范围内”的点
+	m->contactCount = 0;
+
+	// 检查入射边的第一个点是否在参考物内部
+	if (IsPointInBody(incidentEdge[0], refBody)) {
+		m->contacts[m->contactCount++] = incidentEdge[0];
 	}
-	m->contacts.push_back(bestContact);
-	// ---------------------------------------
+	// 检查入射边的第二个点是否在参考物内部
+	if (IsPointInBody(incidentEdge[1], refBody)) {
+		m->contacts[m->contactCount++] = incidentEdge[1];
+	}
+
+	// 如果由于数值误差一个点都没找到，退化到最深点逻辑
+	if (m->contactCount == 0) {
+		m->contacts[0] = incidentEdge[0];
+		m->contactCount = 1;
+	}
+
+	// 初始化冲量（Day 12 核心）
+	m->impulseN[0] = m->impulseN[1] = 0.0f;
+	m->impulseT[0] = m->impulseT[1] = 0.0f;
 
 	return true;
+}
+
+void Collision::FindIncidentEdge(Vector2 out[2], const std::vector<Vector2>& vertices, Vector2 normal) {
+	// 寻找入射物上与法线最方向相反的顶点
+	float minDot = FLT_MAX;
+	int index = 0;
+	for (int i = 0; i < 4; ++i) {
+		float dot = vertices[i].Dot(normal);
+		if (dot < minDot) {
+			minDot = dot;
+			index = i;
+		}
+	}
+
+	// 入射边由该顶点及其相邻的两个顶点中更垂直于法线的那个组成
+	Vector2 v1 = vertices[index];
+	Vector2 v0 = vertices[(index + 3) % 4]; // 前一个点
+	Vector2 v2 = vertices[(index + 1) % 4]; // 后一个点
+
+	// 比较哪条边更垂直于法线
+	if (std::abs(v1.Sub(v0).Normalize().Dot(normal)) <= std::abs(v1.Sub(v2).Normalize().Dot(normal))) {
+		out[0] = v0; out[1] = v1;
+	}
+	else {
+		out[0] = v1; out[1] = v2;
+	}
+}
+
+bool Collision::IsPointInBody(Vector2 p, Body* b) {
+	// 简单版：将点转换到物体的本地空间，判断是否在 AABB 范围内
+	// 这对于旋转矩形也有效
+	Vector2 localP = p - b->GetPosition();
+	float angle = -b->GetRotation(); // 逆旋转
+	float s = std::sin(angle);
+	float c = std::cos(angle);
+
+	float rotatedX = localP.getX() * c - localP.getY()* s;
+	float rotatedY = localP.getX() * s + localP.getY() * c;
+
+	Box* shape = static_cast<Box*>(b->GetShape());
+	float hx = shape->getWidth() / 2.0f;
+	float hy = shape->getHeigh() / 2.0f;
+
+	return (std::abs(rotatedX) <= hx + 0.01f && std::abs(rotatedY) <= hy + 0.01f);
 }
 
 bool Collision::CircleVsBox(Manifold* m, Body* circlebody, Body* boxbody)
@@ -105,69 +174,70 @@ bool Collision::CircleVsBox(Manifold* m, Body* circlebody, Body* boxbody)
 	Vector2 localCirclePos = relationPos.Rotate(-boxbody->GetRotation());
 
 	float hw = box->getHalfWidth();
-	float hh = box->getHalfHeigh(); // 修正拼写
+	float hh = box->getHalfHeigh();
 
-	// 2. 确定矩形上距离圆心最近的点
-	Vector2 closestPoint(
-		std::max(-hw, std::min(localCirclePos.getX(), hw)),
-		std::max(-hh, std::min(localCirclePos.getY(), hh))
-	);
+	// 2. 确定矩形上距离圆心最近的点 (Closest Point)
+	// C++11 替代 std::clamp 的写法：
+	float closestX = std::max(-hw, std::min(localCirclePos.getX(), hw));
+	float closestY = std::max(-hh, std::min(localCirclePos.getY(), hh));
+	Vector2 closestPoint(closestX, closestY);
 
 	// 3. 计算距离
-	Vector2 distVec = localCirclePos - closestPoint;
+	Vector2 distVec = localCirclePos - closestPoint; // 从最近点指向圆心
 	float distSq = distVec.LengthSquared();
-	float r = circle->getR(); // 假设你的函数名是这个
+	float r = circle->getR();
 
 	// 判定是否碰撞
 	bool isInside = (std::abs(localCirclePos.getX()) <= hw && std::abs(localCirclePos.getY()) <= hh);
-
 	if (distSq > r * r && !isInside)
 		return false;
 
+	// 填充流形基本信息
 	m->bodyA = circlebody;
 	m->bodyB = boxbody;
+	m->contactCount = 1; // 圆与矩形碰撞始终只有 1 个点
 
-	Vector2 localNormal; // 提前声明局部法线
+	Vector2 localNormal;
 
-	if (distSq > 0.0001f) {
+	if (distSq > 0.0001f && !isInside) {
 		// 情况 A: 圆心在矩形外
 		float dist = std::sqrt(distSq);
 		m->penetration = r - dist;
-		// distVec 是从最近点指向圆心的，我们需要从圆指向矩形，所以取反
-		localNormal = (distVec * -1.0f) / dist;
+		// distVec 方向：Box -> Circle，我们需要 Circle -> Box，所以取负
+		localNormal = distVec * (-1.0f / dist);
 	}
 	else {
-		// 情况 B: 圆心在矩形内（穿透最深的情况）
-		// 寻找距离圆心最近的边
+		// 情况 B: 圆心在矩形内
 		float distToRight = hw - localCirclePos.getX();
 		float distToLeft = hw + localCirclePos.getX();
 		float distToTop = hh - localCirclePos.getY();
 		float distToBottom = hh + localCirclePos.getY();
 
 		if (distToRight < distToLeft && distToRight < distToTop && distToRight < distToBottom) {
-			localNormal = Vector2(1, 0); // 指向右
+			localNormal = Vector2(1, 0);
 			m->penetration = r + distToRight;
 		}
 		else if (distToLeft < distToTop && distToLeft < distToBottom) {
-			localNormal = Vector2(-1, 0); // 指向左
+			localNormal = Vector2(-1, 0);
 			m->penetration = r + distToLeft;
 		}
 		else if (distToTop < distToBottom) {
-			localNormal = Vector2(0, 1); // 指向上
+			localNormal = Vector2(0, 1);
 			m->penetration = r + distToTop;
 		}
 		else {
-			localNormal = Vector2(0, -1); // 指向下
+			localNormal = Vector2(0, -1);
 			m->penetration = r + distToBottom;
 		}
 	}
 
-	// 4. 将局部法线旋转回世界坐标
+	// 4. 转回世界空间
 	m->normal = localNormal.Rotate(boxbody->GetRotation());
+	m->contacts[0] = closestPoint.Rotate(boxbody->GetRotation()) + boxbody->GetPosition();
 
-	// 5. 统一计算接触点 (就是矩形上的那个点，转回世界空间)
-	m->contacts.clear();
-	m->contacts.push_back(closestPoint.Rotate(boxbody->GetRotation()) + boxbody->GetPosition());
+	// 5. 初始化冲量缓存（Day 12 核心）
+	m->impulseN[0] = 0.0f;
+	m->impulseT[0] = 0.0f;
 
 	return true;
 }

@@ -8,49 +8,74 @@
 #include <algorithm>
 
 void ImpulseSolver(Manifold& m) {
-    if (m.contacts.empty()) return;
+    if (m.contactCount == 0) return;
 
-    Body* a = m.bodyA;
-    Body* b = m.bodyB;
+    Body* A = m.bodyA;
+    Body* B = m.bodyB;
 
-    float invMassSum = a->getInvMass() + b->getInvMass();
-    if (invMassSum < 0.0001f) return; // 两个都是静态物体
+    float invMassA = A->getInvMass();
+    float invMassB = B->getInvMass();
+    float invInertiaA = A->getInvInertia();
+    float invInertiaB = B->getInvInertia();
+    float invMassSum = invMassA + invMassB;
 
-    // 1. 计算相对速度（包含旋转分量）
-    Vector2 rA = m.contacts[0] - a->GetPosition();
-    Vector2 rB = m.contacts[0] - b->GetPosition();
+    float e = std::min(A->getRestitution(), B->getRestitution());
+    float mu = std::sqrt(A->getFriction() * B->getFriction());
 
-    // v_p = v_linear + w x r
-    Vector2 vA_p = a->GetVelocity() + Vector2::Cross(a->getAngularVelocity(), rA);
-    Vector2 vB_p = b->GetVelocity() + Vector2::Cross(b->getAngularVelocity(), rB);
-    Vector2 v_rel = vB_p - vA_p;
+    for (int i = 0; i < m.contactCount; ++i) {
+        Vector2 rA = m.contacts[i] - A->GetPosition();
+        Vector2 rB = m.contacts[i] - B->GetPosition();
 
-    // 2. 计算法向速度
-    float v_normal = v_rel.Dot(m.normal);
-    
-    Logger::Info("V_Rel_Normal: " + std::to_string(v_normal));
-    // 【关键调试点】：如果物体穿透但不反弹，试着翻转这个判断
-    // 逻辑：如果 v_normal < 0，说明物体正在相向运动（接近），才需要解算
-    if (v_normal > 0.0f) return;
+        // 1. 法向冲量解算
+        Vector2 vA_p = A->GetVelocity() + Vector2::Cross(A->getAngularVelocity(), rA);
+        Vector2 vB_p = B->GetVelocity() + Vector2::Cross(B->getAngularVelocity(), rB);
+        Vector2 v_rel = vB_p - vA_p;
 
-    // 3. 计算冲量标量 j
-    float rAn = Vector2::Cross(rA, m.normal);
-    float rBn = Vector2::Cross(rB, m.normal);
-    float rotTerm = (rAn * rAn * a->getInvInertia()) + (rBn * rBn * b->getInvInertia());
+        float v_normal = v_rel.Dot(m.normal);
+        if (v_normal > 0) continue; // 正在分离
 
-    float e = std::min(a->getRestitution(), b->getRestitution());
-    float j = -(1.0f + e) * v_normal / (invMassSum + rotTerm);
+        float rAn = Vector2::Cross(rA, m.normal);
+        float rBn = Vector2::Cross(rB, m.normal);
+        float shareDenominator = invMassSum + (rAn * rAn * invInertiaA) + (rBn * rBn * invInertiaB);
 
-    // 4. 应用冲量
-    Vector2 impulseVector = m.normal * j;
+        float jn = -(1.0f + e) * v_normal / shareDenominator;
+        jn /= (float)m.contactCount;
 
-    // 平动更新
-    a->ApplyImpulse(impulseVector * -1.0f);
-    b->ApplyImpulse(impulseVector);
+        Vector2 impulseN = m.normal * jn;
+        A->ApplyImpulse(-impulseN, rA);
+        B->ApplyImpulse(impulseN, rB); // 假设你有这个函数或者直接操作
 
-    // 转动更新（必须手动更新角速度）
-    a->setAngularVelocity(a->getAngularVelocity() - Vector2::Cross(rA, impulseVector) * a->getInvInertia());
-    b->setAngularVelocity(b->getAngularVelocity() + Vector2::Cross(rB, impulseVector) * b->getInvInertia());
+        // 2. 切向冲量 (摩擦力) 解算
+        // 必须重新计算速度，因为法向冲量刚刚改变了它
+        vA_p = A->GetVelocity() + Vector2::Cross(A->getAngularVelocity(), rA);
+        vB_p = B->GetVelocity() + Vector2::Cross(B->getAngularVelocity(), rB);
+        v_rel = vB_p - vA_p;
+
+        Vector2 tangent = v_rel - (m.normal * v_rel.Dot(m.normal));
+        if (tangent.LengthSquared() > 0.0001f) {
+            tangent = tangent.Normalize();
+        }
+        else {
+            continue;
+        }
+
+        float vt = v_rel.Dot(tangent);
+        float rAt = Vector2::Cross(rA, tangent);
+        float rBt = Vector2::Cross(rB, tangent);
+        float frictionDenominator = invMassSum + (rAt * rAt * invInertiaA) + (rBt * rBt * invInertiaB);
+
+        float jt = -vt / frictionDenominator;
+        jt /= (float)m.contactCount;
+
+        // --- C++11 适配：库仑定律限制 ---
+        float maxFriction = jn * mu;
+        if (jt > maxFriction) jt = maxFriction;
+        else if (jt < -maxFriction) jt = -maxFriction;
+
+        Vector2 impulseT = tangent * jt;
+        A->ApplyImpulse(-impulseT, rA);
+        B->ApplyImpulse(impulseT, rB);
+    }
 }
 
 //实现位置修正函数

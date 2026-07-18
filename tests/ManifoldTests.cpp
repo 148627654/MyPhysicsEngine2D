@@ -9,21 +9,21 @@
 
 
 // 辅助函数：打印流形数据
-void PrintResult(const std::string& testName, bool collided, const Manifold& m) {
-    std::cout << "==== Test: " << testName << " ====" << std::endl;
-    if (!collided) {
-        std::cout << "Result: No Collision" << std::endl;
-    }
-    else {
-        std::cout << "Result: COLLISION!" << std::endl;
-        std::cout << "  Penetration: " << m.penetration << std::endl;
-        std::cout << "  Normal:      (" << m.normal.getX() << ", " << m.normal.getY() << ")" << std::endl;
-        if (!m.contacts.empty()) {
-            std::cout << "  Contact Pt:  (" << m.contacts[0].getX() << ", " << m.contacts[0].getY() << ")" << std::endl;
-        }
-    }
-    std::cout << "--------------------------------" << std::endl << std::endl;
-}
+//void PrintResult(const std::string& testName, bool collided, const Manifold& m) {
+//    std::cout << "==== Test: " << testName << " ====" << std::endl;
+//    if (!collided) {
+//        std::cout << "Result: No Collision" << std::endl;
+//    }
+//    else {
+//        std::cout << "Result: COLLISION!" << std::endl;
+//        std::cout << "  Penetration: " << m.penetration << std::endl;
+//        std::cout << "  Normal:      (" << m.normal.getX() << ", " << m.normal.getY() << ")" << std::endl;
+//        if (!m.contacts.empty()) {
+//            std::cout << "  Contact Pt:  (" << m.contacts[0].getX() << ", " << m.contacts[0].getY() << ")" << std::endl;
+//        }
+//    }
+//    std::cout << "--------------------------------" << std::endl << std::endl;
+//}
 
 //int main() {
 //    // 1. 初始化两个圆的形状

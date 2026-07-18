@@ -1,5 +1,6 @@
 #pragma once
 #include <iostream>
+#include <Vector2.h>
 class Vector2
 {
 public:
@@ -48,6 +49,11 @@ public:
 	static float Cross(const Vector2& a , const Vector2& b);
 	static Vector2 Cross(const Vector2& a , const float b);
 	static Vector2 Cross(const float a,const Vector2& b);
+
+	// 在 Vector2 类定义内部添加
+	inline Vector2 Add(const Vector2& v) const { return Vector2(x + v.getX( ) , y + v.getY( )); }
+	inline Vector2 Sub(const Vector2& v) const { return Vector2(x - v.getX( ) , y - v.getY( )); }
+	inline Vector2 Mul(float s) const { return Vector2(x * s , y * s); }
 private:
 	float x;
 	float y;
