@@ -34,7 +34,7 @@ public:
 	friend class World;
 	// 方便外部（如日志系统）读取数据
 	void SetPosition(float x , float y) { position = Vector2(x , y); }
-	void SetPosition(Vector2 &v) { position = v; }
+	void SetPosition(const Vector2 &v) { position = v; }
 	Vector2 GetPosition() const { return position; }
 	Vector2 GetVelocity() const { return velocity; }
 	Shape* GetShape()const { return shape; };
@@ -59,6 +59,8 @@ public:
 	void ApplyImpulse(const Vector2& impulse , const Vector2& contactVector);
 	inline float getFriction( ) const { return friction; }
 	inline void setFriction(float f) { friction = f; }
+	inline int32_t getProxyId() const { return m_proxyId; }
+	inline void setProxyId(int32_t id) { m_proxyId = id; }
 private:
 	Vector2 position;		//当前位置
 	Vector2 velocity;		//当前速度
@@ -83,5 +85,5 @@ private:
 	float restitution;
 
 	float friction;    // 摩擦系数，建议范围 0.0 ~ 1.0 \mu
-
+	int32_t m_proxyId = -1; // 默认 -1 代表还没进树
 };
