@@ -25,7 +25,9 @@ public:
 
 	//调试
 	inline float getX() const { return x; }
+	inline void setX(float x_) { x = x_; }
 	inline float getY() const { return y; }
+	inline void setY(float y_) { y = y_; }
 
 	//长度计算
 	inline float Length() const{ return std::sqrt(x * x + y * y); }

@@ -17,7 +17,8 @@ MyPhysicsEngine2D/
 ├── include/
 │   └── physics/
 │       ├── Collision/
-│       │   ├── DynamicTree.h      # <--- [V2 新增] 动态 AABB 树核心
+│       │   ├── DynamicTree.h      # <--- [V2] 动态 AABB 树核心
+│       │   ├── AABB.h             # <--- [V2] 增加 Union, Perimeter 计算
 │       │   └── ...
 │       ├── Dynamics/
 │       │   ├── Island.h           # <--- [V2 规划] 岛屿与睡眠管理
@@ -26,11 +27,12 @@ MyPhysicsEngine2D/
 │           └── Profiler.h         # <--- [V2 规划] 性能分析工具
 ├── src/
 │   ├── Collision/
-│   │   ├── DynamicTree.cpp        # <--- [V2 新增] 节点池与树维护逻辑
+│   │   ├── DynamicTree.cpp        # <--- [V2] 节点插入、树构建、内存管理
 │   │   └── ...
 ├── tests/
-│   └── TreePoolTests.cpp          # <--- [V2 新增] 内存复用与扩容测试
-└── README_V2.md
+│   ├── TreePoolTests.cpp          # <--- [V2] 内存复用与扩容测试
+│   └── TreeInsertTests.cpp        # <--- [V2] 插入逻辑与层级验证测试
+└── README.md
 ```
 
 ---
@@ -43,7 +45,11 @@ MyPhysicsEngine2D/
   - 实现 **Free List (空闲链表)** 机制，达到 $O(1)$ 的节点分配与回收。
   - 实现数组自动动态扩容，支持大规模节点平滑增长。
   - 完成 `userData` 与 `Body` 的双向绑定。
-
+- [x] **Day 02: 启发式插入算法 (InsertLeaf)**
+  - 实现基于 **SAH (表面积启发式)** 的最佳兄弟节点搜索。
+  - 实现内部节点自动生成逻辑，构建满二叉树结构。
+  - 实现 **Bottom-up 更新机制**，确保父节点 AABB 实时包裹所有子孙。
+  - 完成 `userData` 与 `Body` 的物理层级绑定。
 ## 🚀 Day 01 进展：动态树基础架构 (Node Pool)
 
 ### 1. 技术核心：索引式内存池
@@ -87,10 +93,39 @@ Capacity: 16 | Active Count: 2 | FreeList Head: 1
 ```
 
 ---
+## 🚀 Day 02 进展：启发式插入与层级构建
+
+### 1. 技术核心：满二叉树构建
+动态 AABB 树通过“二合一”插入逻辑保持满二叉树状态：
+- **寻找最佳兄弟**：当新物体进入时，遍历树分支，计算将新物体塞入该分支后导致的“周长增加量 (Cost)”，选择代价最小的方向。
+- **自动升舱**：当确定位置后，从池中取出一个内部节点作为“新爸爸”，将原有节点和新节点挂载其下。
+
+### 2. AABB 向上回溯 (Bottom-up Update)
+为了保证碰撞查询的准确性，实现了递归回溯：
+- 任何叶子节点的变化都会触发其父辈、祖辈节点的 AABB 重新计算。
+- 内部节点的 AABB 始终通过 `AABB::Union(child1, child2)` 保持最紧凑的包裹。
+
+### 3. 如何验证
+运行 `tests/TreeInsertTests.cpp`。通过 Body 坐标偏移验证：
+- ✅ **层级倍增校验**：插入 3 个物体，Active Count 准确从 1 增长到 5 (3叶子 + 2内部)，证明满二叉树生成逻辑正确。
+- ✅ **空间包裹校验**：验证根节点 AABB 的 Min/Max。例如插入 (10,10) 和 (20,20) 后，Root AABB 成功扩展为包围两者的巨大盒子。
+- ✅ **结构健康检查**：通过 `Validate()` 函数确认所有父子索引双向匹配，无死循环。
+
+**Day 02 运行快照：**
+```text
+[INFO] Inserted Body 2 at (20,20).
+[INFO] === DynamicTree Node Pool State ===
+Capacity: 16 | Active Count: 3 | FreeList Head: 3
+[Slot  2] TYPE: ACTIVE | USERDATA: nullptr  <-- 自动生成的内部节点
+[INFO] Root AABB Min: (9.5, 9.5) 
+[INFO] Root AABB Max: (20.5, 20.5) 
+[INFO] SUCCESS: Root AABB correctly encapsulates both children!
+```
+---
 
 ## 💻 编译与运行
 - **环境**：Visual Studio 2019+ (C++11)
 - **入口**：在 `main.cpp` 中调用 `RunRealBodyTreeTest()` 即可观察 V2 底层内存池运作。
 
 ### 💡 备注
-Day 01 完成了“储物柜”管理。目前节点间尚未建立树状父子关系，这将在 **Day 02 (InsertLeaf)** 中通过 SAH (表面积启发式算法) 正式打通。
+Day 02 成功让节点“成家立业”形成了层级。但目前树在极端情况下会失去平衡，这将在 **Day 03 (Tree Rotations)** 中通过经典的 AVL 旋转算法进行空间优化。

@@ -28,9 +28,13 @@ public:
 	int32_t CreateProxy(const AABB& aabb , void* userData);
 	void DestroyProxy(int32_t proxyId);
 	void PrintPool( ) const;
+	void Validate() const;
+	inline int32_t GetRoot()const { return m_root; }
+	inline const AABB& GetNodeAABB(int32_t nodeId) const { return m_nodes[nodeId].aabb; }
 private:
 	int32_t AllocateNode( );
 	void FreeNode(int32_t nodeId);
+	void InsertLeaf(int32_t leaf);
 
 	Node* m_nodes;
 	int32_t m_nodeCount;
