@@ -16,7 +16,7 @@ struct Node
 		int32_t height;			//平衡树
 	};
 
-	bool isLeaf( )const { return leftChild; }
+	bool isLeaf()const { return leftChild == -1; }
 };
 
 class DynamicTree
@@ -28,13 +28,19 @@ public:
 	int32_t CreateProxy(const AABB& aabb , void* userData);
 	void DestroyProxy(int32_t proxyId);
 	void PrintPool( ) const;
-	void Validate() const;
 	inline int32_t GetRoot()const { return m_root; }
 	inline const AABB& GetNodeAABB(int32_t nodeId) const { return m_nodes[nodeId].aabb; }
+	inline int32_t GetNodeHeight(int32_t rootId)const { if (rootId == -1) return 0;
+	return m_nodes[rootId].height; }
+	void Describe() const; // 打印树状结构
 private:
 	int32_t AllocateNode( );
 	void FreeNode(int32_t nodeId);
 	void InsertLeaf(int32_t leaf);
+	int32_t Balance(int32_t iA);//LL,RR,LR,RL
+	void UpdateNodeMetadata(int32_t i);
+	void DescribeNode(int32_t nodeId, int32_t depth) const; // 递归辅助
+	void RemoveLeaf(int32_t leafId);
 
 	Node* m_nodes;
 	int32_t m_nodeCount;

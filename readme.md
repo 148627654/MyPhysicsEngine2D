@@ -17,21 +17,20 @@ MyPhysicsEngine2D/
 ├── include/
 │   └── physics/
 │       ├── Collision/
-│       │   ├── DynamicTree.h      # <--- [V2] 动态 AABB 树核心
+│       │   ├── DynamicTree.h      # <--- [V2] 动态 AABB 树核心 (支持旋转与平衡)
 │       │   ├── AABB.h             # <--- [V2] 增加 Union, Perimeter 计算
-│       │   └── ...
+│       │   └── Box.h
 │       ├── Dynamics/
-│       │   ├── Island.h           # <--- [V2 规划] 岛屿与睡眠管理
+│       │   ├── Body.h             # <--- [V2] 存储 ProxyId 
 │       │   └── ...
-│       └── Utils/
-│           └── Profiler.h         # <--- [V2 规划] 性能分析工具
 ├── src/
 │   ├── Collision/
-│   │   ├── DynamicTree.cpp        # <--- [V2] 节点插入、树构建、内存管理
+│   │   ├── DynamicTree.cpp        # <--- [V2] 插入/平衡/删除逻辑实现
 │   │   └── ...
 ├── tests/
-│   ├── TreePoolTests.cpp          # <--- [V2] 内存复用与扩容测试
-│   └── TreeInsertTests.cpp        # <--- [V2] 插入逻辑与层级验证测试
+│   ├── TreePoolTests.cpp          # <--- [V2] 内存管理测试
+│   ├── TreeInsertTests.cpp        # <--- [V2] 插入与 SAH 代价算法测试
+│   └── TreeRotationTests.cpp      # <--- [V2] Day 03 专用：自平衡与删除测试
 └── README.md
 ```
 
@@ -50,6 +49,10 @@ MyPhysicsEngine2D/
   - 实现内部节点自动生成逻辑，构建满二叉树结构。
   - 实现 **Bottom-up 更新机制**，确保父节点 AABB 实时包裹所有子孙。
   - 完成 `userData` 与 `Body` 的物理层级绑定。
+- [x] **Day 03: 树旋转自平衡与代理删除 (Tree Rotations & Removal)**
+  - 实现 **AVL 风格旋转算法**，在插入/删除过程中自动调整树高。
+  - 实现 `RemoveLeaf` 逻辑，支持兄弟节点自动提拔与内存安全回收。
+  - 验证 12 节点在高强度删除下的 $O(\log N)$ 稳定性。
 ## 🚀 Day 01 进展：动态树基础架构 (Node Pool)
 
 ### 1. 技术核心：索引式内存池
@@ -122,10 +125,84 @@ Capacity: 16 | Active Count: 3 | FreeList Head: 3
 [INFO] SUCCESS: Root AABB correctly encapsulates both children!
 ```
 ---
+## 🚀 Day 03 进展：自平衡算法与动态缩减
+
+### 1. 技术核心：AVL 旋转 (Tree Rotations)
+动态树最怕物体按线性排列插入（如一排地基），这会导致树退化为 $O(N)$ 复杂度的链表。
+- **旋转判定**：每当检测到左右子树高度差（Balance Factor）超过 1 时，触发旋转。
+- **节点提拔**：通过交换指针，将被“压扁”的深层节点提拔至高位，降低全局搜索代价。
+- **四种旋转**：支持 LL, RR, LR, RL 全套旋转逻辑，确保树高始终维持在 $\lceil \log_2 N \rceil + 1$。
+
+### 2. 节点移除与 AABB 动态缩减
+- **兄弟提拔机制**：删除一个叶子后，其父节点被标记为 FREE，其兄弟节点自动接管父节点在树中的位置。
+- **实时收缩**：删除操作会触发从删除点向上的 AABB 重新计算，根节点 AABB 会随之自动收缩至仅包含剩余物体的范围。
+
+### 3. 树结构演变图解 (根据 Day 03 运行结果)
+
+#### **阶段 A: 12 个物体插入后的完美平衡树 (Root: 8, Height: 4)**
+```text
+--- Tree Hierarchy (Root: 8) ---
+[Slot 8] INTERNAL (Height: 4, X: -0.5 to 22.5)
+|--[Slot 4] INTERNAL (Height: 2, X: -0.5 to 6.5)
+   |--[Slot 2] INTERNAL (Height: 1, X: -0.5 to 2.5)
+      |--[Slot 0] LEAF (BodyX: 0)
+      |--[Slot 1] LEAF (BodyX: 2)
+   |--[Slot 6] INTERNAL (Height: 1, X: 3.5 to 6.5)
+      |--[Slot 3] LEAF (BodyX: 4)
+      |--[Slot 5] LEAF (BodyX: 6)
+|--[Slot 16] INTERNAL (Height: 3, X: 7.5 to 22.5)
+   |--[Slot 12] INTERNAL (Height: 2, X: 7.5 to 14.5)
+      |--[Slot 10] INTERNAL (Height: 1, X: 7.5 to 10.5)
+         |--[Slot 7] LEAF (BodyX: 8)
+         |--[Slot 9] LEAF (BodyX: 10)
+      |--[Slot 14] INTERNAL (Height: 1, X: 11.5 to 14.5)
+         |--[Slot 11] LEAF (BodyX: 12)
+         |--[Slot 13] LEAF (BodyX: 14)
+   |--[Slot 20] INTERNAL (Height: 2, X: 15.5 to 22.5)
+      |--[Slot 18] INTERNAL (Height: 1, X: 15.5 to 18.5)
+         |--[Slot 15] LEAF (BodyX: 16)
+         |--[Slot 17] LEAF (BodyX: 18)
+      |--[Slot 22] INTERNAL (Height: 1, X: 19.5 to 22.5)
+         |--[Slot 19] LEAF (BodyX: 20)
+         |--[Slot 21] LEAF (BodyX: 22)
+```
+
+#### **阶段 B: 执行删除操作 (移除索引 1,3,5,7,9,11)**
+当中间和边缘的节点被移除后，树通过 **旋转** 重新寻路，根节点从 Slot 8 转移到了 **Slot 16**，树高降低为 **3**。
+```text
+--- Tree Hierarchy (Root: 16) ---
+[Slot 16] INTERNAL (Height: 3, X: -0.5 to 20.5)
+|--[Slot 8] INTERNAL (Height: 2, X: -0.5 to 12.5)
+   |--[Slot 4] INTERNAL (Height: 1, X: -0.5 to 4.5)
+      |--[Slot 0] LEAF (BodyX: 0.0)
+      |--[Slot 3] LEAF (BodyX: 4.0)
+   |--[Slot 12] INTERNAL (Height: 1, X: 7.5 to 12.5)
+      |--[Slot 7] LEAF (BodyX: 8.0)
+      |--[Slot 11] LEAF (BodyX: 12.0)
+|--[Slot 20] INTERNAL (Height: 1, X: 15.5 to 20.5)
+   |--[Slot 15] LEAF (BodyX: 16.0)
+   |--[Slot 19] LEAF (BodyX: 20.0)
+```
+
+### 4. 如何验证
+运行 `tests/TreeRotationTests.cpp`。当前已通过以下校验：
+- ✅ **高度压缩测试**：12 节点初始高度 4，删除一半后高度降为 3。
+- ✅ **平衡因子校验**：删除过程中无任何节点高度差超过 1。
+- ✅ **AABB 自动缩减**：删除最大 X 坐标节点后，Root AABB Max.X 从 22.5 精准收缩至 20.5。
+- ✅ **内存池一致性**：`Active Count` 从 23 减少到 11，且 Free List 指针链逻辑正确。
+
+**Day 03 运行快照：**
+```text
+[INFO] Action: Removing odd-indexed bodies...
+[INFO] Tree Height after removal: 3
+[INFO] SUCCESS: Tree remains balanced after removals!
+[INFO] Root AABB Max: 20.5 (Shrunk from 22.5)
+[INFO] --- Tree Hierarchy (Root: 16) ---
+[Slot 16] INTERNAL (Height: 3, X: -0.5 to 20.5)
+|--[Slot 8] INTERNAL (Height: 2, X: -0.5 to 12.5)
+|--[Slot 20] INTERNAL (Height: 1, X: 15.5 to 20.5)
+```
 
 ## 💻 编译与运行
 - **环境**：Visual Studio 2019+ (C++11)
 - **入口**：在 `main.cpp` 中调用 `RunRealBodyTreeTest()` 即可观察 V2 底层内存池运作。
-
-### 💡 备注
-Day 02 成功让节点“成家立业”形成了层级。但目前树在极端情况下会失去平衡，这将在 **Day 03 (Tree Rotations)** 中通过经典的 AVL 旋转算法进行空间优化。
