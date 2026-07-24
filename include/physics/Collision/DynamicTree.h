@@ -33,6 +33,7 @@ public:
 	inline int32_t GetNodeHeight(int32_t rootId)const { if (rootId == -1) return 0;
 	return m_nodes[rootId].height; }
 	void Describe() const; // 打印树状结构
+	bool MoveProxy(int32_t proxyId, const AABB& aabb, const Vector2& displacement);
 private:
 	int32_t AllocateNode( );
 	void FreeNode(int32_t nodeId);

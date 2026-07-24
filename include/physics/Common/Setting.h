@@ -14,5 +14,8 @@ namespace Settings
 	constexpr float BIAS = 0.6f;
 	//bias 建议设为 `0.2f` 到 `0.8f`（代表每帧修复百分之几）。
 	
+    
+    static constexpr float k_aabbExtension = 0.1f;      //单位长度
+    static constexpr float k_aabbMultiplier = 2.0f;     //位移预测倍率
 
 }

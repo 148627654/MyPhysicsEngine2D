@@ -1,6 +1,7 @@
 #include "DynamicTree.h"
 #include <iomanip> // 用于对齐输出
 #include "../../include/physics/Collision/AABB.h"
+#include "../../include/physics/Common/Setting.h"
 
 #include <iostream>
 #include <string>
@@ -223,12 +224,17 @@ int32_t DynamicTree::CreateProxy(const AABB& aabb, void* userData) {
 	// 拿一个空柜子
 	int32_t proxyId = AllocateNode();
 
-	// 设置叶子节点的信息
-	m_nodes[proxyId].aabb = aabb;
+	// --- 关键修改：初始创建时就外扩 ---
+	AABB fatAABB = aabb;
+	fatAABB.min.setX(fatAABB.min.getX() - Settings::k_aabbExtension);
+	fatAABB.min.setY(fatAABB.min.getY() - Settings::k_aabbExtension);
+	fatAABB.max.setX(fatAABB.max.getX() + Settings::k_aabbExtension);
+	fatAABB.max.setY(fatAABB.max.getY() + Settings::k_aabbExtension);
+
+	m_nodes[proxyId].aabb = fatAABB;
 	m_nodes[proxyId].userData = userData;
 	m_nodes[proxyId].height = 0;
 
-	// --- 注意：Day 1 只需要到这里 ---
 	 InsertLeaf(proxyId); 
 
 	return proxyId;
@@ -308,6 +314,47 @@ void DynamicTree::Describe() const {
 	std::cout << "--- Tree Hierarchy (Root: " << m_root << ") ---" << std::endl;
 	DescribeNode(m_root, 0);
 	std::cout << "------------------------------------------" << std::endl;
+}
+
+bool DynamicTree::MoveProxy(int32_t proxyId, const AABB& aabb, const Vector2& displacement)
+{
+	if (m_nodes[proxyId].aabb.Contains(aabb))//包裹aabb
+	{
+		//Logger::Info("Step 3: best dont run this code");
+		return false;
+	}
+		
+	RemoveLeaf(proxyId);
+
+	AABB b = aabb;
+	//更新fat AABB
+	b.min.setX(b.min.getX() - Settings::k_aabbExtension);
+	b.min.setY(b.min.getY() - Settings::k_aabbExtension);
+	b.max.setX(b.max.getX() + Settings::k_aabbExtension);
+	b.max.setY(b.max.getY() + Settings::k_aabbExtension);
+	// dispalce= v * dt
+	Vector2 d = displacement * Settings::k_aabbMultiplier;
+
+	if (d.getX() < 0.0f) {
+		// 向左动，把左边界往左拉
+		b.min.setX(b.min.getX() + d.getX());
+	}
+	else {
+		// 向右动，把右边界往右拉
+		b.max.setX(b.max.getX() + d.getX());
+	}
+
+	if (d.getY() < 0.0f) {
+		// 向下动，把下边界往下推
+		b.min.setY(b.min.getY() + d.getY());
+	}
+	else {
+		// 向上动，把上边界往上拉
+		b.max.setY(b.max.getY() + d.getY());
+	}
+	m_nodes[proxyId].aabb = b;
+	InsertLeaf(proxyId);
+	return true;
 }
 
 void DynamicTree::DescribeNode(int32_t nodeId, int32_t depth) const {

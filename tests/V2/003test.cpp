@@ -69,8 +69,8 @@ void RunDay3RotationTest() {
     Logger::Info("V2-Day 3 Test Completed.");
 }
 
-int main()
-{
-    RunDay3RotationTest();
-    return 0;
-}
+//int main()
+//{
+//    RunDay3RotationTest();
+//    return 0;
+//}

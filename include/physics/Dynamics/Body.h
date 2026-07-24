@@ -33,13 +33,13 @@ public:
 	Vector2 AddForce(Vector2 f);
 	friend class World;
 	// 方便外部（如日志系统）读取数据
-	void SetPosition(float x , float y) { position = Vector2(x , y); }
-	void SetPosition(const Vector2 &v) { position = v; }
+	void SetPosition(float x, float y);
+	void SetPosition(const Vector2& v);
 	Vector2 GetPosition() const { return position; }
 	Vector2 GetVelocity() const { return velocity; }
 	Shape* GetShape()const { return shape; };
 	float GetRotation()const { return rotation; }
-	void SetRotation(float r) { rotation = r; }
+	void SetRotation(float r);
 	void SetVelocity(Vector2 v) { velocity = v; }
 	AABB GetAABB( )const { return worldAABB; }
 	float getAngularVelocity( )const { return angularVelocity; }

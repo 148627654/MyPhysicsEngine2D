@@ -17,20 +17,20 @@ MyPhysicsEngine2D/
 ├── include/
 │   └── physics/
 │       ├── Collision/
-│       │   ├── DynamicTree.h      # <--- [V2] 动态 AABB 树核心 (支持旋转与平衡)
-│       │   ├── AABB.h             # <--- [V2] 增加 Union, Perimeter 计算
+│       │   ├── DynamicTree.h      # <--- [V2] 动态 AABB 树核心 (支持旋转、平衡、Fat AABB)
+│       │   ├── AABB.h             # <--- [V2] 增加 Union, Contains, Overlap 判断
 │       │   └── Box.h
 │       ├── Dynamics/
-│       │   ├── Body.h             # <--- [V2] 存储 ProxyId 
+│       │   ├── Body.h             # <--- [V2] 存储 ProxyId，同步更新 AABB
 │       │   └── ...
 ├── src/
 │   ├── Collision/
-│   │   ├── DynamicTree.cpp        # <--- [V2] 插入/平衡/删除逻辑实现
+│   │   ├── DynamicTree.cpp        # <--- [V2] 插入/平衡/删除/MoveProxy 逻辑实现
 │   │   └── ...
 ├── tests/
 │   ├── TreePoolTests.cpp          # <--- [V2] 内存管理测试
-│   ├── TreeInsertTests.cpp        # <--- [V2] 插入与 SAH 代价算法测试
-│   └── TreeRotationTests.cpp      # <--- [V2] Day 03 专用：自平衡与删除测试
+│   ├── TreeRotationTests.cpp      # <--- [V2] 自平衡与删除测试
+│   └── TreeMovementTests.cpp      # <--- [V2] Day 04 专用：肥包围盒与预测测试
 └── README.md
 ```
 
@@ -53,6 +53,10 @@ MyPhysicsEngine2D/
   - 实现 **AVL 风格旋转算法**，在插入/删除过程中自动调整树高。
   - 实现 `RemoveLeaf` 逻辑，支持兄弟节点自动提拔与内存安全回收。
   - 验证 12 节点在高强度删除下的 $O(\log N)$ 稳定性。
+- [x] **Day 04: 肥包围盒 (Fat AABB) 与位移预测**
+  - 实现 AABB 缓冲区扩展，消除微小移动带来的重构开销。
+  - 实现基于速度的位移拉伸预测，优化高速物体的更新频率。
+  - **关键突破**：解决了数据同步断层导致的预测失效 Bug。
 ## 🚀 Day 01 进展：动态树基础架构 (Node Pool)
 
 ### 1. 技术核心：索引式内存池
@@ -202,6 +206,40 @@ Capacity: 16 | Active Count: 3 | FreeList Head: 3
 |--[Slot 8] INTERNAL (Height: 2, X: -0.5 to 12.5)
 |--[Slot 20] INTERNAL (Height: 1, X: 15.5 to 20.5)
 ```
+## 🚀 Day 04 进展：肥包围盒与移动预测
+
+### 1. 技术核心：空间容错与时间前瞻
+- **肥包围盒 (Fat AABB)**：
+  - 为物体的紧包围盒（Tight AABB）增加一层 `k_aabbExtension` (0.1) 的缓冲区。
+  - **MoveProxy 逻辑**：只有当物体穿透这层“肥肉”时，才触发树的删除与再插入。对于 90% 的微小抖动或静止物体，重构开销被降为 **0**。
+- **位移预测 (Movement Prediction)**：
+  - 根据物体的位移矢量 $V \cdot dt$，在运动方向上额外拉伸包围盒。
+  - **预测公式**：`NewFatAABB = TightAABB + Extension + (Displacement * Multiplier)`。
+  - **效果**：高速物体在接下来几帧内将大概率留在预测区域内，大幅提升了高速模拟场景的帧率。
+
+### 2. 开发复盘：那些让我们“翻车”的 Bug
+在 Day 04 的集成测试中，我们遇到了两个极具代表性的技术陷阱，并成功攻克：
+
+#### **Bug A: 数据同步断层 (Stale Data Sync)**
+- **现象**：`MoveProxy` 始终判定物体没动，导致位移预测（100.1 的拉伸）无法触发。
+- **根因**：`Body::SetPosition` 修改了坐标，但没有同步调用 `updateAABB()`。导致 `tree.MoveProxy` 获取到的始终是物体在 (0,0) 位置的旧 AABB。
+- **解决**：在 `Body` 类的 `SetPosition` 和 `SetRotation` 中强制同步 `updateAABB()`，确保“真实坐标”与“逻辑 AABB”绝对一致。
+### 3. 如何验证
+运行 `tests/TreeMovementTests.cpp`（综合集成测试）：
+- ✅ **微动过滤测试**：物体移动 0.05 距离，`MoveProxy` 成功拦截，返回 `false`。
+- ✅ **大跨度位移测试**：物体移动 50.0 距离，`MoveProxy` 触发重构，返回 `true`。
+- ✅ **预测拉伸校验**：Body 0 的右侧缓冲区（Right Buffer）达到 **100.1**，证明方向预测完美生效。
+
+**Day 04 运行快照（完美状态）：**
+```text
+[INFO] Step 3: Large movement for Body 0 (to X=50)...
+[INFO] SUCCESS: Large movement triggered tree reconstruction.
+[INFO] Body 0 Right Buffer: 100.099991 (Stretched correctly!)
+--- Tree Hierarchy (Root: 8) ---
+[Slot 8] INTERNAL (Height: 2, X: 4.4 to 150.6) <-- 全局包裹范围自动扩展至预测区
+```
+
+---
 
 ## 💻 编译与运行
 - **环境**：Visual Studio 2019+ (C++11)

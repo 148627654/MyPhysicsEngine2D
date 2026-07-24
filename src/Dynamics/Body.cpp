@@ -6,6 +6,22 @@ Vector2 Body::AddForce(Vector2 f)
     return this->force;
 }
 
+void Body::SetPosition(float x, float y)
+{
+    position = Vector2(x, y);updateAABB();
+}
+
+void Body::SetPosition(const Vector2& v)
+{
+    position = v; 
+    
+}
+
+void Body::SetRotation(float r)
+{
+    rotation = r;
+    updateAABB();
+}
 void Body::SetShape(Shape* s, float density)
 {
     this->shape = s;
