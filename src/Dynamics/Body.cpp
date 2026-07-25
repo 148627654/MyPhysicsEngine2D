@@ -13,7 +13,7 @@ void Body::SetPosition(float x, float y)
 
 void Body::SetPosition(const Vector2& v)
 {
-    position = v; 
+    position = v; updateAABB();
     
 }
 

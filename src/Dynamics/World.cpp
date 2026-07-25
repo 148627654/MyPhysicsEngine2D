@@ -4,69 +4,64 @@
 #include "../../include/physics/Dynamics/Solver.h"
 void World::Step(float dt)
 {
-	// --- 1. 力与速度积分 (Linear & Angular Velocity) ---
+	// --- 1. 力与速度积分 (Velocity Integration) ---
 	for (auto p : m_bodies)
 	{
-		if (p->getInvMass() == 0) continue; // 静态物体跳过
+		if (p->getInvMass() == 0) continue;
 
-		// 计算加速度并更新速度 v = v + a*dt
 		Vector2 acc = p->force * p->getInvMass() + m_gravity * p->gravityScale;
 		p->velocity += acc * dt;
 
-		// 计算角加速度并更新角速度 w = w + alpha*dt
 		float angularAcc = p->torque * p->getInvInertia();
 		p->angularVelocity += angularAcc * dt;
 
-		// 清空力矩和力，为下一帧做准备
 		p->ClearForce();
 		p->torque = 0.0f;
 	}
 
-	// --- 2. 碰撞检测与流形生成 ---
-	m_manifolds.clear();
-	for (size_t i = 0; i < m_bodies.size(); ++i) {
-		for (size_t j = i + 1; j < m_bodies.size(); ++j) {
-			Body* a = m_bodies[i];
-			Body* b = m_bodies[j];
-
-			// 两个静态物体不碰撞
-			if (a->getInvMass() == 0 && b->getInvMass() == 0) continue;
-
-			// 宽相过滤
-			if (!Collision::AABBvsAABB(a->GetAABB(), b->GetAABB())) continue;
-
-			// 窄相检测
-			Manifold m(a, b);
-			if (Collision::Dispatch(&m, a, b)) {
-				m_manifolds.push_back(m);
-			}
-		}
-	}
-
-	// --- 3. 速度解算阶段 (Sequential Impulses) ---
-	// 【第 12 天核心】：通过多次迭代让系统趋于稳定
-	const int velocityIterations = 8; // 建议 8-10 次
-	for (int i = 0; i < velocityIterations; ++i) {
-		for (auto& m : m_manifolds) {
-			// 这个函数现在包含：多点处理、法向冲量、摩擦力冲量
-			ImpulseSolver(m);
-		}
-	}
-
-	// --- 4. 位置积分 (Position Integration) ---
-	// 使用解算后的速度更新位置
+	// --- 2. 位置积分与宽相更新  ---
+	// 逻辑：在检测碰撞前，必须先更新物体的坐标和 AABB，并通知宽相树
 	for (auto p : m_bodies) {
 		if (p->getInvMass() == 0) continue;
 
 		p->position += p->velocity * dt;
 		p->rotation += p->angularVelocity * dt;
 
-		// 更新 AABB 以供下一帧宽相检测使用
+		// 更新物体的 Tight AABB
 		p->updateAABB();
+
+		// 【关键】：通知宽相系统，物体移动了
+		// 如果物体超出了它的“肥包围盒”，MoveProxy 会把它的 ID 放入移动缓冲区
+		m_broadPhase.MoveProxy(p->getProxyId(), p->GetAABB(), p->velocity * dt);
 	}
 
-	// --- 5. 位置修正 (Position Correction / Baumgarte Stabilization) ---
-	// 解决物体相互穿透（下陷）的问题
+	// --- 3. 碰撞检测 (BroadPhase + NarrowPhase) ---
+	m_manifolds.clear();
+
+	// 定义回调函数：当宽相发现一对潜在碰撞时，执行窄相检测
+	auto broadPhaseCallback = [&](void* userDataA, void* userDataB) {
+		Body* a = static_cast<Body*>(userDataA);
+		Body* b = static_cast<Body*>(userDataB);
+
+		// 两个静态物体不碰撞 (双重保险)
+		if (a->getInvMass() == 0 && b->getInvMass() == 0) return;
+
+		// 执行窄相检测（Dispatch 内部会处理 Box vs Box 等具体算法）
+		Manifold m(a, b);
+		if (Collision::Dispatch(&m, a, b))
+			m_manifolds.push_back(m);
+		};
+	m_broadPhase.UpdatePairs(broadPhaseCallback);
+
+	// --- 4. 速度解算阶段 (Sequential Impulses) ---
+	const int velocityIterations = 8;
+	for (int i = 0; i < velocityIterations; ++i) {
+		for (auto& m : m_manifolds) {
+			ImpulseSolver(m);
+		}
+	}
+
+	// --- 5. 位置修正 (Baumgarte Stabilization) ---
 	for (auto& m : m_manifolds) {
 		PositionalCorrection(m);
 	}

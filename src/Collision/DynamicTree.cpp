@@ -429,3 +429,37 @@ void DynamicTree::RemoveLeaf(int32_t leafId) {
 		FreeNode(parent);
 	}
 }
+/*
+**非递归遍历**：使用手动栈（数组）模拟递归，避免频繁的函数调用开销。
+**回调机制**：每找到一个重叠的叶子，调用一次回调函数。
+*/
+void DynamicTree::Query(const AABB& aabb, std::function<bool(int32_t)> callback)
+{
+	int arrStack[512]{};
+	int stackCount = 0;
+	arrStack[stackCount++] = m_root;
+
+	while (stackCount > 0)
+	{
+		//获取key 根节点的下标
+		int32_t nodeIndex = arrStack[--stackCount];
+		if (nodeIndex == -1)
+			return;
+		//获取节点
+		const Node& node = m_nodes[nodeIndex];
+		if (node.aabb.Overlap(aabb))//判断是否覆盖
+		{
+			//每找到一个重叠的叶子
+			if (node.isLeaf())
+			{
+				bool proceed = callback(nodeIndex);
+				if (!proceed) return;
+			}
+			else
+			{
+				arrStack[stackCount++] = node.leftChild;
+				arrStack[stackCount++] = node.rightChild;
+			}
+		}
+	}
+}

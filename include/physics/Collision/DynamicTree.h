@@ -1,6 +1,8 @@
 #pragma once
 #include "AABB.h"
 #include "../Utils/Logger.h"
+#include <functional>
+#include <assert.h>
 struct Node
 {
 	AABB aabb;
@@ -34,6 +36,16 @@ public:
 	return m_nodes[rootId].height; }
 	void Describe() const; // 打印树状结构
 	bool MoveProxy(int32_t proxyId, const AABB& aabb, const Vector2& displacement);
+	void Query(const AABB& aabb, std::function<bool(int32_t)> callback);
+	inline void* GetUserData(int32_t proxyId) const {
+		assert(proxyId >= 0 && proxyId < m_nodeCapacity); 
+		return m_nodes[proxyId].userData;
+	}
+	inline bool IsLeaf(int32_t nodeId) const {
+		// 安全检查：索引必须在合法范围内
+		if (nodeId < 0 || nodeId >= m_nodeCapacity) return false;
+		return m_nodes[nodeId].isLeaf();
+	}
 private:
 	int32_t AllocateNode( );
 	void FreeNode(int32_t nodeId);
@@ -42,7 +54,7 @@ private:
 	void UpdateNodeMetadata(int32_t i);
 	void DescribeNode(int32_t nodeId, int32_t depth) const; // 递归辅助
 	void RemoveLeaf(int32_t leafId);
-
+	
 	Node* m_nodes;
 	int32_t m_nodeCount;
 	int32_t m_nodeCapacity;

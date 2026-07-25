@@ -17,20 +17,19 @@ MyPhysicsEngine2D/
 ├── include/
 │   └── physics/
 │       ├── Collision/
-│       │   ├── DynamicTree.h      # <--- [V2] 动态 AABB 树核心 (支持旋转、平衡、Fat AABB)
-│       │   ├── AABB.h             # <--- [V2] 增加 Union, Contains, Overlap 判断
-│       │   └── Box.h
+│       │   ├── DynamicTree.h      # <--- [V2] 空间搜索引擎 (底层算法)
+│       │   ├── BroadPhase.h       # <--- [V2] 碰撞对管理器 (系统管理层)
+│       │   ├── AABB.h             # <--- [V2] 增加 Contains, Overlap 判定
+│       │   └── ...
 │       ├── Dynamics/
 │       │   ├── Body.h             # <--- [V2] 存储 ProxyId，同步更新 AABB
+│       │   ├── World.h            # <--- [V2] 核心循环集成 BroadPhase 回调
 │       │   └── ...
 ├── src/
 │   ├── Collision/
-│   │   ├── DynamicTree.cpp        # <--- [V2] 插入/平衡/删除/MoveProxy 逻辑实现
+│   │   ├── DynamicTree.cpp        # <--- 栈式 DFS 查询、自平衡旋转实现
+│   │   ├── BroadPhase.cpp         # <--- 移动缓冲区 (MoveBuffer)、对过滤实现
 │   │   └── ...
-├── tests/
-│   ├── TreePoolTests.cpp          # <--- [V2] 内存管理测试
-│   ├── TreeRotationTests.cpp      # <--- [V2] 自平衡与删除测试
-│   └── TreeMovementTests.cpp      # <--- [V2] Day 04 专用：肥包围盒与预测测试
 └── README.md
 ```
 
@@ -57,6 +56,10 @@ MyPhysicsEngine2D/
   - 实现 AABB 缓冲区扩展，消除微小移动带来的重构开销。
   - 实现基于速度的位移拉伸预测，优化高速物体的更新频率。
   - **关键突破**：解决了数据同步断层导致的预测失效 Bug。
+- [x] **Day 05: 宽相系统集成与碰撞对回调 (BroadPhase Integration)**
+  - 实现 `BroadPhase` 包装层，负责移动物体的“增量更新”。
+  - 实现栈式非递归 `Query` 算法，规避函数调用开销。
+  - **核心重构**：将 $O(N^2)$ 的碰撞检测进化为 $O(N \log N)$ 的按需检测。
 ## 🚀 Day 01 进展：动态树基础架构 (Node Pool)
 
 ### 1. 技术核心：索引式内存池
@@ -237,6 +240,50 @@ Capacity: 16 | Active Count: 3 | FreeList Head: 3
 [INFO] Body 0 Right Buffer: 100.099991 (Stretched correctly!)
 --- Tree Hierarchy (Root: 8) ---
 [Slot 8] INTERNAL (Height: 2, X: 4.4 to 150.6) <-- 全局包裹范围自动扩展至预测区
+```
+
+---
+## 🚀 Day 05 进展：宽相集成与空间查询
+
+### 1. 架构深度解析：BroadPhase 与 DynamicTree 的关系
+在 V2 架构中，两者是典型的**“管理者”与“执行者”**的关系：
+- **DynamicTree (执行者)**：专注于**空间算法**。它只关心节点如何分裂、如何旋转、如何根据 AABB 找出重叠的叶子。它不感知“物理世界”或“Body”的概念。
+- **BroadPhase (管理者)**：专注于**业务逻辑**。它持有动态树，维护一个 `MoveBuffer`（记录本帧谁动了）。它负责去重、排序，并将复杂的树查询结果简化为“碰撞对 (Pair)”分发给外部。
+
+### 2. 为什么把回调函数 (Callback) 写在 World 中？
+这体现了 **控制反转 (IoU)** 与 **解耦** 的设计思想：
+- **职责分离**：`BroadPhase` 的任务只是找出“谁可能撞了”。它不应该知道如何计算碰撞法线，也不应该知道 `Manifold`（流形）的存在。
+- **灵活性**：`World` 作为指挥部，拿到碰撞对后可以自由决定后续操作：是执行精确的窄相检测？还是直接触发触发器逻辑？或者是过滤掉特定类型的碰撞？
+- **性能优化**：通过 Lambda 回调，我们可以直接在 `World` 循环中原地处理数据，避免了在内存中创建巨大的临时列表。
+
+### 3. 开发复盘：Day 05 的技术陷阱
+在今天的集成测试中，我们遭遇了以下挑战并成功修复：
+
+#### **Bug A: 重载函数的同步遗漏 (Overload Sync Gap)**
+- **现象**：`Step 3` 的大跨度移动测试中，宽相竟然判定“没撞上”。
+- **根因**：`Body` 类有两个 `SetPosition` 重载（`float, float` 和 `Vector2`）。我们只给其中一个加了 `updateAABB()`，而测试代码刚好用了另一个。
+- **教训**：在维护底层数据同步时，任何一个 Setter 的疏漏都会导致空间索引系统失效。
+
+#### **Bug B: 接口签名的逻辑缺失 (Return Type Mismatch)**
+- **现象**：测试函数无法判定物体是处于 `STABLE` 还是 `RECONSTRUCTED` 状态。
+- **解决**：将 `MoveProxy` 的返回值从 `void` 修改为 `bool`。这个布尔值不仅是性能指示器（是否触发重构），更是宽相决定是否将物体放入 `MoveBuffer` 的唯一依据。
+
+### 4. 如何验证
+运行 `tests/BroadPhaseDetailedTest.cpp`：
+- ✅ **初始重叠检测**：B0, B1 刚创建即被宽相雷达锁定，输出 `Potential Collision #1`。
+- ✅ **性能拦截测试**：B2 微动 0.02 距离，输出 `STABLE`，证明 Fat AABB 成功拦截了无效的树重构。
+- ✅ **瞬移检测测试**：B2 剧烈移动，输出 `RECONSTRUCTED`，宽相瞬间产出 B2-B0, B2-B1 两组对。
+
+**Day 05 运行快照：**
+```text
+[INFO] BroadPhase: Running UpdatePairs (Initial check)...
+    [MATCH] Potential Collision #1: Body(ID:0, Pos:0.0) <--> Body(ID:1, Pos:0.5)
+[INFO] Step 2: Micro-move...
+  - MoveProxy report: STABLE (Performance Filter Active)
+[INFO] Step 3: Large move...
+  - MoveProxy report: RECONSTRUCTED
+    [MATCH] Potential Collision #1: Body(ID:0, Pos:0.0) <--> Body(ID:3, Pos:0.2)
+    [MATCH] Potential Collision #2: Body(ID:1, Pos:0.5) <--> Body(ID:3, Pos:0.2)
 ```
 
 ---
