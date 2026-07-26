@@ -26,6 +26,72 @@ DynamicTree::~DynamicTree()
 	delete[]m_nodes;
 }
 
+
+/*
+**非递归遍历**：使用手动栈（数组）模拟递归，避免频繁的函数调用开销。
+**回调机制**：每找到一个重叠的叶子，调用一次回调函数。
+*/
+void DynamicTree::Query(const AABB& aabb, std::function<bool(int32_t)> callback)
+{
+	int arrStack[512]{};
+	int stackCount = 0;
+	arrStack[stackCount++] = m_root;
+
+	while (stackCount > 0)
+	{
+		//获取key 根节点的下标
+		int32_t nodeIndex = arrStack[--stackCount];
+		if (nodeIndex == -1)
+			return;
+		//获取节点
+		const Node& node = m_nodes[nodeIndex];
+		if (node.aabb.Overlap(aabb))//判断是否覆盖
+		{
+			//每找到一个重叠的叶子
+			if (node.isLeaf())
+			{
+				bool proceed = callback(nodeIndex);
+				if (!proceed) return;
+			}
+			else
+			{
+				arrStack[stackCount++] = node.leftChild;
+				arrStack[stackCount++] = node.rightChild;
+			}
+		}
+	}
+}
+
+void DynamicTree::RayCast(RayCastInput& input, std::function<float(RayCastInput& input, int32_t nodeId)> callback)
+{
+	int arrStack[512]{};
+	int stackCount = 0;
+	arrStack[stackCount++] = m_root;
+	while (stackCount > 0)
+	{
+		int32_t nodeIndex = arrStack[--stackCount];
+		const Node& node = m_nodes[nodeIndex];
+
+		// --- 关键：Ray vs AABB 相交测试 ---
+		float hitFraction = node.aabb.RayCast(input);
+		if (hitFraction<0 || hitFraction > input.maxFraction)
+			continue;
+		if (node.isLeaf()) {
+			// 撞到了叶子，交给回调处理
+			float value = callback(input, nodeIndex);
+			if (value == 0.0f) return; // 提前结束
+			if (value < input.maxFraction) {
+				input.maxFraction = value; // 动态缩短射线，优化搜索
+			}
+		}
+		else {
+			// 内部节点，继续压栈
+			arrStack[stackCount++] = node.leftChild;
+			arrStack[stackCount++] = node.rightChild;
+		}
+	}
+}
+
 int32_t DynamicTree::AllocateNode() {
 	if (m_freelist == -1) {
 		Node* oldNodes = m_nodes;
@@ -427,39 +493,5 @@ void DynamicTree::RemoveLeaf(int32_t leafId) {
 		m_root = sibling;
 		m_nodes[sibling].parent = -1;
 		FreeNode(parent);
-	}
-}
-/*
-**非递归遍历**：使用手动栈（数组）模拟递归，避免频繁的函数调用开销。
-**回调机制**：每找到一个重叠的叶子，调用一次回调函数。
-*/
-void DynamicTree::Query(const AABB& aabb, std::function<bool(int32_t)> callback)
-{
-	int arrStack[512]{};
-	int stackCount = 0;
-	arrStack[stackCount++] = m_root;
-
-	while (stackCount > 0)
-	{
-		//获取key 根节点的下标
-		int32_t nodeIndex = arrStack[--stackCount];
-		if (nodeIndex == -1)
-			return;
-		//获取节点
-		const Node& node = m_nodes[nodeIndex];
-		if (node.aabb.Overlap(aabb))//判断是否覆盖
-		{
-			//每找到一个重叠的叶子
-			if (node.isLeaf())
-			{
-				bool proceed = callback(nodeIndex);
-				if (!proceed) return;
-			}
-			else
-			{
-				arrStack[stackCount++] = node.leftChild;
-				arrStack[stackCount++] = node.rightChild;
-			}
-		}
 	}
 }

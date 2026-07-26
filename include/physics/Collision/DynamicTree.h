@@ -3,6 +3,9 @@
 #include "../Utils/Logger.h"
 #include <functional>
 #include <assert.h>
+
+
+
 struct Node
 {
 	AABB aabb;
@@ -46,6 +49,7 @@ public:
 		if (nodeId < 0 || nodeId >= m_nodeCapacity) return false;
 		return m_nodes[nodeId].isLeaf();
 	}
+	void RayCast(RayCastInput& input, std::function<float(RayCastInput& input, int32_t nodeId)> callback);
 private:
 	int32_t AllocateNode( );
 	void FreeNode(int32_t nodeId);
@@ -61,3 +65,4 @@ private:
 	int32_t m_root;
 	int32_t m_freelist;
 };
+

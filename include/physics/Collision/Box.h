@@ -11,6 +11,8 @@ public:
 	AABB ComputeAABB(Vector2 pos , float angle);
 	float getArea() { return width * height; }
 	MassData ComputeMass(float density);
+	bool RayCast(RayCastOutput* output, RayCastInput& input,
+		const Vector2& position, float rotation);
 
 	//获取长和宽
 	float getWidth()const { return width; }

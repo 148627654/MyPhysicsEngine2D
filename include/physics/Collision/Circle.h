@@ -13,6 +13,8 @@ public:
 	float getArea() { return Settings::PAI * radius * radius; }
 	MassData ComputeMass(float density);
 	float getR()const { return radius; }
+	bool RayCast(RayCastOutput* output, RayCastInput& input,
+		const Vector2& position, float rotation);
 private:
 	float radius;
 };

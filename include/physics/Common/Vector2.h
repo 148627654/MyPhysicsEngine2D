@@ -8,7 +8,7 @@ public:
 	constexpr Vector2(float x = 0.0, float y = 0.0) :x(x), y(y) {}
 	//向量与向量
 	Vector2 operator+(const Vector2& val);
-	Vector2 operator-(const Vector2& val);
+	Vector2 operator-(const Vector2& val)const;
 	Vector2& operator+=(const Vector2& val);
 	Vector2& operator-=(const Vector2& val);
 	//向量与float

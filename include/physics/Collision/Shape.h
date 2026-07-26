@@ -4,6 +4,12 @@ struct MassData {
 	float mass;    // 质量
 	float inertia; // 转动惯量
 };
+
+struct RayCastOutput {
+	Vector2 normal;   // 撞击点的表面法线
+	float fraction;   // 撞击点在射线上的比例 [0, 1]
+};
+
 struct AABB;
 class Shape
 {
@@ -15,5 +21,6 @@ public:
 	virtual float getArea() = 0;
 	virtual ~Shape() {}
 	virtual AABB ComputeAABB(Vector2 pos , float angle) = 0;
-	
+	virtual bool RayCast(RayCastOutput* output, RayCastInput& input,
+		const Vector2& position, float rotation) = 0;
 };

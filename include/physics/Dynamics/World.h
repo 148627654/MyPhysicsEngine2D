@@ -16,6 +16,8 @@ public:
 		body->setProxyId(proxyId);
 	}
 	const std::vector<Body*>& GetBodies( )const { return m_bodies; }
+	void RayCast(Vector2 p1, Vector2 p2);
+	void RemoveBody(Body* body);
 private:
 	std::vector<Body*> m_bodies;
 	Vector2 m_gravity;

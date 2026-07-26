@@ -26,9 +26,15 @@ public:
 	int32_t CreateProxy(const AABB& aabb, void* userData);
 	bool MoveProxy(int32_t proxyId, const AABB& aabb, const Vector2& displacement);
 	void DestroyProxy(int32_t proxyId);
+	void RayCast(RayCastInput& input, std::function<float(RayCastInput&, int32_t)> callback) {
+		m_tree.RayCast(input, callback);
+	}
+	void* GetUserData(int32_t proxyId) const {
+		return m_tree.GetUserData(proxyId);
+	}
 private:
 	void BufferMove(int32_t proxyId);
 	DynamicTree m_tree;
 	std::vector<int32_t> m_moveBuffer;				//(存储本帧移动过的物体索引)。
-	std::vector<Pair> m_pairBuffer;		//(存储发现的潜在碰撞对)。
+	std::vector<Pair> m_pairBuffer;					//(存储发现的潜在碰撞对)。
 };

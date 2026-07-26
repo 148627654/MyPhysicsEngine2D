@@ -9,7 +9,7 @@ Vector2 Vector2::operator+(const Vector2& val)
 	return temp;
 }
 
-Vector2 Vector2::operator-(const Vector2& val)
+Vector2 Vector2::operator-(const Vector2& val)const
 {
 	Vector2 temp;
 	temp.x = x - val.x;
