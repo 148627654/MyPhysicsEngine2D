@@ -1,0 +1,51 @@
+#include "IsLand.h"
+#include "../../include/physics/Dynamics/Solver.h" // 确保能访问到你之前的解算函数
+
+IsLand::IsLand(int bodyCapacity, int contactCapacity) {
+    m_bodies.reserve(bodyCapacity);
+    m_contacts.reserve(contactCapacity);
+}
+
+
+void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
+    float dt = step.dt;
+
+    // --- 1. 速度积分 ---
+    for (Body* b : m_bodies) {
+        if (b->getInvMass() == 0.0f) continue;
+
+        // v = v + (f/m + g) * dt
+        Vector2 acceleration = b->getForce() * b->getInvMass() + gravity * b->getGravityScale();
+        b->SetVelocity(b->GetVelocity() + acceleration * dt);
+
+        // w = w + (torque/I) * dt
+        float angularAcc = b->getTorque() * b->getInvInertia();
+        b->setAngularVelocity(b->getAngularVelocity() + angularAcc * dt);
+
+        b->ClearForce();
+        b->setTorque(0.0f);
+    }
+
+    // --- 2. 冲量解算 (Velocity Constraints) ---
+    for (int i = 0; i < step.velocityIterations; ++i) {
+        for (Contact* c : m_contacts) {
+            // 这里调用你 V1 写好的 ImpulseSolver
+            ImpulseSolver(c->GetManifold());
+        }
+    }
+
+    // --- 3. 位置积分 ---
+    for (Body* b : m_bodies) {
+        if (b->getInvMass() == 0.0f) continue;
+
+        b->SetPosition(b->GetPosition() + b->GetVelocity() * dt);
+        b->SetRotation(b->GetRotation() + b->getAngularVelocity() * dt);
+    }
+
+    // --- 4. 位置修正 (Position Constraints) ---
+    for (int i = 0; i < step.positionIterations; ++i) {
+        for (Contact* c : m_contacts) {
+            PositionalCorrection(c->GetManifold());
+        }
+    }
+}

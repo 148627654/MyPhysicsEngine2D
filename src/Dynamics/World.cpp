@@ -2,70 +2,84 @@
 #include "../Collision/Collision.h"
 #include "../Utils/Logger.h"
 #include "../../include/physics/Dynamics/Solver.h"
+// 在 World.h 中添加：std::map<std::pair<Body*, Body*>, Contact*> m_contactMap;
+
 void World::Step(float dt) {
-    // --- 1. 速度积分 (Velocity Integration) ---
-    for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f) continue;
-
-        // v = v + (f/m + g) * dt
-        Vector2 acceleration = b->force * b->getInvMass() + m_gravity * b->gravityScale;
-        b->velocity += acceleration * dt;
-
-        // w = w + (torque/I) * dt
-        float angularAcc = b->torque * b->getInvInertia();
-        b->angularVelocity += angularAcc * dt;
-
-        b->ClearForce(); // 每帧清空力累加器
-        b->torque = 0.0f;
+    // --- 1. 宽相发现 & 窄相更新 (持久化 Contact) ---
+    // 我们需要一个标记位来识别哪些 Contact 在这一帧消失了
+    for (auto& pair : m_contactMap) {
+        pair.second->m_islandFlag = false; // 临时借用这个标记做“存活检查”
     }
 
-    // --- 2. 位置积分 与 宽相维护 (Position Integration & Sync) ---
-    for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f) continue;
-
-        // 更新位置和角度 (内部会自动触发 b->updateAABB())
-        b->SetPosition(b->GetPosition() + b->velocity * dt);
-        b->SetRotation(b->GetRotation() + b->angularVelocity * dt);
-
-        // 【关键集成】：同步到宽相
-        // 只有当物体跳出肥包围盒时，MoveProxy 会返回 true 并记录到 MoveBuffer
-        m_broadPhase.MoveProxy(b->getProxyId(), b->GetAABB(), b->velocity * dt);
-    }
-
-    // --- 3. 碰撞对收集 (Narrow Phase Dispatch) ---
-    m_manifolds.clear();
-
-    // 定义回调逻辑
     auto broadPhaseCallback = [&](void* userDataA, void* userDataB) {
         Body* bodyA = static_cast<Body*>(userDataA);
         Body* bodyB = static_cast<Body*>(userDataB);
 
-        // 两个静态物体不解算
         if (bodyA->getInvMass() == 0.0f && bodyB->getInvMass() == 0.0f) return;
 
-        // 执行窄相精确检测 (Dispatch)
-        Manifold m(bodyA, bodyB);
-        // 这里是你 V1 阶段实现的碰撞分发器逻辑
-        if (Collision::Dispatch(&m, bodyA, bodyB)) {
-            m_manifolds.push_back(m);
+        // 保证顺序 A < B
+        if (bodyA > bodyB) std::swap(bodyA, bodyB);
+        auto key = std::make_pair(bodyA, bodyB);
+
+        Contact* contact = nullptr;
+        if (m_contactMap.count(key)) {
+            contact = m_contactMap[key];
         }
-        printf("[COLLISION] Body A and B overlapped!\n");
+        else {
+            // 创建新碰撞并挂载双向链表
+            contact = new Contact(bodyA, bodyB);
+            m_contactMap[key] = contact;
+
+            // 挂载到 Body A
+            contact->m_nodeA.next = bodyA->m_contactList;
+            if (bodyA->m_contactList) bodyA->m_contactList->prev = &contact->m_nodeA;
+            bodyA->m_contactList = &contact->m_nodeA;
+
+            // 挂载到 Body B
+            contact->m_nodeB.next = bodyB->m_contactList;
+            if (bodyB->m_contactList) bodyB->m_contactList->prev = &contact->m_nodeB;
+            bodyB->m_contactList = &contact->m_nodeB;
+        }
+
+        contact->update(); // 执行窄相检测
+        if (contact->IsTouching()) {
+            contact->m_islandFlag = true; // 标记本帧活跃
+        }
         };
 
-    // 【核心提升】：宽相只对“动过”的物体执行查询，极大减少检测次数
     m_broadPhase.UpdatePairs(broadPhaseCallback);
 
-    // --- 4. 冲量解算 (Solving) ---
-    const int velocityIterations = 8;
-    for (int i = 0; i < velocityIterations; ++i) {
-        for (auto& manifold : m_manifolds) {
-            ImpulseSolver(manifold); // 你的冲量解算器
+    // --- 2. 构建并解算岛屿 ---
+    BuildAndSolveIslands(dt);
+
+    // --- 3. 清理不再接触的 Contact (Mark and Sweep) ---
+    for (auto it = m_contactMap.begin(); it != m_contactMap.end(); ) {
+        Contact* c = it->second;
+        // 如果 AABB 不重合了或者 IsTouching 没了，且标记为 false
+        if (!c->m_islandFlag) {
+            // 从 Body A 链表摘除
+            if (c->m_nodeA.prev) c->m_nodeA.prev->next = c->m_nodeA.next;
+            if (c->m_nodeA.next) c->m_nodeA.next->prev = c->m_nodeA.prev;
+            if (c->m_bodyA->m_contactList == &c->m_nodeA) c->m_bodyA->m_contactList = c->m_nodeA.next;
+
+            // 从 Body B 链表摘除
+            if (c->m_nodeB.prev) c->m_nodeB.prev->next = c->m_nodeB.next;
+            if (c->m_nodeB.next) c->m_nodeB.next->prev = c->m_nodeB.prev;
+            if (c->m_bodyB->m_contactList == &c->m_nodeB) c->m_bodyB->m_contactList = c->m_nodeB.next;
+
+            delete c;
+            it = m_contactMap.erase(it);
+        }
+        else {
+            ++it;
         }
     }
 
-    // --- 5. 位置修正 (Baumgarte) ---
-    for (auto& manifold : m_manifolds) {
-        PositionalCorrection(manifold);
+    // --- 4. 同步 AABB ---
+    for (Body* b : m_bodies) {
+        if (b->getInvMass() == 0.0f) continue;
+        b->updateAABB();
+        m_broadPhase.MoveProxy(b->getProxyId(), b->GetAABB(), b->GetVelocity() * dt);
     }
 }
 
@@ -81,6 +95,80 @@ void World::RemoveBody(Body* body) {
 		m_bodies.erase(it);
 		delete body;
 	}
+}
+
+void World::BuildAndSolveIslands(float dt) {
+    // 1. 初始化标记
+    for (Body* b : m_bodies) b->m_islandFlag = false;
+    for (auto& pair : m_contactMap) pair.second->m_islandFlag = false;
+
+    TimeStep step;
+    step.dt = dt;
+    step.velocityIterations = 8;
+    step.positionIterations = 3;
+
+    int islandCount = 0; // 诊断：记录本帧生成的岛屿总数
+
+    // 2. 遍历所有物体寻找“种子”
+    for (Body* seed : m_bodies) {
+        if (seed->m_islandFlag || seed->getInvMass() == 0.0f) continue;
+
+        // --- DFS 诊断日志：发现新岛屿 ---
+        islandCount++;
+
+        IsLand island(m_bodies.size(), m_contactMap.size());
+
+        // 3. DFS 遍历
+        std::vector<Body*> stack;
+        stack.reserve(m_bodies.size());
+        stack.push_back(seed);
+        seed->m_islandFlag = true;
+
+        int bodiesInIsland = 0;
+        int contactsInIsland = 0;
+
+        while (!stack.empty()) {
+            Body* b = stack.back();
+            stack.pop_back();
+
+            island.Add(b);
+            bodiesInIsland++; // 计数
+
+            for (ContactEdge* ce = b->getContactList(); ce; ce = ce->next) {
+                Contact* contact = ce->contact;
+
+                if (contact->m_islandFlag || !contact->IsTouching()) continue;
+
+                island.Add(contact);
+                contact->m_islandFlag = true;
+                contactsInIsland++; // 计数
+
+                Body* other = ce->other;
+                if (other->m_islandFlag) continue;
+
+                if (other->getInvMass() > 0.0f) {
+                    other->m_islandFlag = true;
+                    stack.push_back(other);
+                }
+                else {
+                    island.Add(other);
+                    // 静态物体不标记，bodiesInIsland 不统计它（可选，看你需求）
+                }
+            }
+        }
+
+        // --- DFS 诊断日志：岛屿构建完成 ---
+        // 仅在每一秒（约60帧）打印一次，或者在物体数量变动时打印，防止刷屏
+        // 这里为了测试先直接打印
+        
+        //Logger::Info("DFS: Island " + std::to_string(islandCount) +
+        //             " created with " + std::to_string(bodiesInIsland) +
+        //             " dynamic bodies and " + std::to_string(contactsInIsland) + " contacts.");
+        //
+
+        // 4. 解算
+        island.Solve(step, m_gravity);
+    }
 }
 
 void World::RayCast(Vector2 p1, Vector2 p2) {

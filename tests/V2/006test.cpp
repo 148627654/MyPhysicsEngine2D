@@ -79,8 +79,8 @@ void RunDay6FinalIntegrationTest() {
     Logger::Info(">>> V2-Day 6 Test Completed Successfully. <<<");
 }
 
-int main()
-{
-    RunDay6FinalIntegrationTest();
-    return 0;
-}
+//int main()
+//{
+//    RunDay6FinalIntegrationTest();
+//    return 0;
+//}

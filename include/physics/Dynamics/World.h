@@ -5,6 +5,9 @@
 #include "../Common/Setting.h"
 #include "../Collision/Manifold.h"
 #include "../Collision/BroadPhase.h"
+#include <map>
+#include "../Collision/Contact.h"
+#include "Island.h"
 class World
 {
 public:
@@ -18,9 +21,12 @@ public:
 	const std::vector<Body*>& GetBodies( )const { return m_bodies; }
 	void RayCast(Vector2 p1, Vector2 p2);
 	void RemoveBody(Body* body);
+	void BuildAndSolveIslands(float dt);
+	std::map<std::pair<Body*, Body*>, Contact*> getContactMap() { return m_contactMap; }
 private:
 	std::vector<Body*> m_bodies;
 	Vector2 m_gravity;
 	std::vector<Manifold> m_manifolds;
 	BroadPhase m_broadPhase; // 宽相管理系统
+	std::map<std::pair<Body*, Body*>, Contact*> m_contactMap;
 };

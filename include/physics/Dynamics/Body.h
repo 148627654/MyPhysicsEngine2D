@@ -2,6 +2,10 @@
 #include "../Common/Vector2.h"
 #include "../Collision/Shape.h"
 //#include "../Collision/Manifold.h"
+class Contact;
+struct ContactEdge;
+
+
 class Body
 {
 public:
@@ -31,7 +35,7 @@ public:
 	}
 	inline void ClearForce() { force.Clear(); }
 	Vector2 AddForce(Vector2 f);
-	friend class World;
+	
 	// 方便外部（如日志系统）读取数据
 	void SetPosition(float x, float y);
 	void SetPosition(const Vector2& v);
@@ -61,7 +65,17 @@ public:
 	inline void setFriction(float f) { friction = f; }
 	inline int32_t getProxyId() const { return m_proxyId; }
 	inline void setProxyId(int32_t id) { m_proxyId = id; }
+	ContactEdge* getContactList() { return m_contactList; }
+	inline Vector2 getForce() const { return force; }
+	inline void setForce(Vector2 f) { force = f; }
+	inline float getGravityScale() const { return gravityScale; }
+	inline void setGravityScale(float g) { gravityScale = g; }
+	inline float getTorque() { return torque; }
+	inline void setTorque(float t) { torque = t; }
 private:
+	friend struct ContactEdge;
+	friend class World;
+
 	Vector2 position;		//当前位置
 	Vector2 velocity;		//当前速度
 	Vector2 force;			//累积力（每一帧更新前清零）
@@ -86,4 +100,8 @@ private:
 
 	float friction;    // 摩擦系数，建议范围 0.0 ~ 1.0 \mu
 	int32_t m_proxyId = -1; // 默认 -1 代表还没进树
+
+	ContactEdge* m_contactList = nullptr;
+	//岛屿的遍历
+	bool m_islandFlag = false;
 };

@@ -11,7 +11,7 @@ namespace Settings
 
 	//slop 建议设为 `0.01f` 到 `0.05f`
 	static constexpr float PENETRATION_ALLOWANCE = 0.02f;
-	constexpr float BIAS = 0.6f;
+	constexpr float BIAS = 0.2f;
 	//bias 建议设为 `0.2f` 到 `0.8f`（代表每帧修复百分之几）。
 	
     
