@@ -2,85 +2,79 @@
 #include "../Collision/Collision.h"
 #include "../Utils/Logger.h"
 #include "../../include/physics/Dynamics/Solver.h"
-// 在 World.h 中添加：std::map<std::pair<Body*, Body*>, Contact*> m_contactMap;
+
 
 void World::Step(float dt) {
-    // --- 1. 宽相发现 & 窄相更新 (持久化 Contact) ---
-    // 我们需要一个标记位来识别哪些 Contact 在这一帧消失了
-    for (auto& pair : m_contactMap) {
-        pair.second->m_islandFlag = false; // 临时借用这个标记做“存活检查”
+    // --- 1. 同步坐标 (这一步必须最先做) ---
+    for (Body* b : m_bodies) {
+        if (b->getInvMass() > 0.0f && b->IsAwake()) {
+            b->updateAABB();
+            m_broadPhase.MoveProxy(b->getProxyId(), b->GetAABB(), b->GetVelocity() * dt);
+        }
     }
 
-    auto broadPhaseCallback = [&](void* userDataA, void* userDataB) {
-        Body* bodyA = static_cast<Body*>(userDataA);
-        Body* bodyB = static_cast<Body*>(userDataB);
-
-        if (bodyA->getInvMass() == 0.0f && bodyB->getInvMass() == 0.0f) return;
-
-        // 保证顺序 A < B
-        if (bodyA > bodyB) std::swap(bodyA, bodyB);
-        auto key = std::make_pair(bodyA, bodyB);
-
-        Contact* contact = nullptr;
-        if (m_contactMap.count(key)) {
-            contact = m_contactMap[key];
-        }
-        else {
-            // 创建新碰撞并挂载双向链表
-            contact = new Contact(bodyA, bodyB);
-            m_contactMap[key] = contact;
-
-            // 挂载到 Body A
-            contact->m_nodeA.next = bodyA->m_contactList;
-            if (bodyA->m_contactList) bodyA->m_contactList->prev = &contact->m_nodeA;
-            bodyA->m_contactList = &contact->m_nodeA;
-
-            // 挂载到 Body B
-            contact->m_nodeB.next = bodyB->m_contactList;
-            if (bodyB->m_contactList) bodyB->m_contactList->prev = &contact->m_nodeB;
-            bodyB->m_contactList = &contact->m_nodeB;
-        }
-
-        contact->update(); // 执行窄相检测
-        if (contact->IsTouching()) {
-            contact->m_islandFlag = true; // 标记本帧活跃
-        }
-        };
-
-    m_broadPhase.UpdatePairs(broadPhaseCallback);
-
-    // --- 2. 构建并解算岛屿 ---
-    BuildAndSolveIslands(dt);
-
-    // --- 3. 清理不再接触的 Contact (Mark and Sweep) ---
+    // --- 2. 存活检查 (Persistence) ---
+    // 只要 AABB 还重叠，Contact 就得活着！
     for (auto it = m_contactMap.begin(); it != m_contactMap.end(); ) {
         Contact* c = it->second;
-        // 如果 AABB 不重合了或者 IsTouching 没了，且标记为 false
-        if (!c->m_islandFlag) {
-            // 从 Body A 链表摘除
-            if (c->m_nodeA.prev) c->m_nodeA.prev->next = c->m_nodeA.next;
-            if (c->m_nodeA.next) c->m_nodeA.next->prev = c->m_nodeA.prev;
-            if (c->m_bodyA->m_contactList == &c->m_nodeA) c->m_bodyA->m_contactList = c->m_nodeA.next;
 
-            // 从 Body B 链表摘除
-            if (c->m_nodeB.prev) c->m_nodeB.prev->next = c->m_nodeB.next;
-            if (c->m_nodeB.next) c->m_nodeB.next->prev = c->m_nodeB.prev;
-            if (c->m_bodyB->m_contactList == &c->m_nodeB) c->m_bodyB->m_contactList = c->m_nodeB.next;
-
+        // 主动询问宽相：Fat AABB 是否还重合？
+        if (m_broadPhase.TestOverlap(c->m_bodyA->getProxyId(), c->m_bodyB->getProxyId())) {
+            c->update(); // 执行窄相，刷新 IsTouching 状态
+            it++;
+        }
+        else {
+            // 只有宽相说分开了，才真正销毁
+            RemoveContactFromGraph(c);
             delete c;
             it = m_contactMap.erase(it);
         }
-        else {
-            ++it;
-        }
     }
 
-    // --- 4. 同步 AABB ---
-    for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f) continue;
-        b->updateAABB();
-        m_broadPhase.MoveProxy(b->getProxyId(), b->GetAABB(), b->GetVelocity() * dt);
-    }
+    // --- 3. 发现新碰撞 ---
+    m_broadPhase.UpdatePairs([&](void* uA, void* uB) {
+        Body* bodyA = static_cast<Body*>(uA);
+        Body* bodyB = static_cast<Body*>(uB);
+        if (bodyA->getInvMass() == 0.0f && bodyB->getInvMass() == 0.0f) return;
+        if (bodyA > bodyB) std::swap(bodyA, bodyB);
+        auto key = std::make_pair(bodyA, bodyB);
+
+        if (m_contactMap.count(key)) return;
+
+        Contact* contact = new Contact(bodyA, bodyB);
+        m_contactMap[key] = contact;
+        AddContactToGraph(contact);
+        contact->update();
+        });
+
+    // --- 4. 构建岛屿并解算 (核心) ---
+    // DFS 内部会重置它自己的 m_islandFlag，不需要在这里操心
+    BuildAndSolveIslands(dt);
+}
+
+void World::AddContactToGraph(Contact* c) {
+    Body* bodyA = c->m_bodyA;
+    Body* bodyB = c->m_bodyB;
+
+    c->m_nodeA.next = bodyA->m_contactList;
+    if (bodyA->m_contactList) bodyA->m_contactList->prev = &c->m_nodeA;
+    bodyA->m_contactList = &c->m_nodeA;
+
+    c->m_nodeB.next = bodyB->m_contactList;
+    if (bodyB->m_contactList) bodyB->m_contactList->prev = &c->m_nodeB;
+    bodyB->m_contactList = &c->m_nodeB;
+}
+
+void World::RemoveContactFromGraph(Contact* c) {
+    // Body A 侧
+    if (c->m_nodeA.prev) c->m_nodeA.prev->next = c->m_nodeA.next;
+    if (c->m_nodeA.next) c->m_nodeA.next->prev = c->m_nodeA.prev;
+    if (c->m_bodyA->m_contactList == &c->m_nodeA) c->m_bodyA->m_contactList = c->m_nodeA.next;
+
+    // Body B 侧
+    if (c->m_nodeB.prev) c->m_nodeB.prev->next = c->m_nodeB.next;
+    if (c->m_nodeB.next) c->m_nodeB.next->prev = c->m_nodeB.prev;
+    if (c->m_bodyB->m_contactList == &c->m_nodeB) c->m_bodyB->m_contactList = c->m_nodeB.next;
 }
 
 void World::RemoveBody(Body* body) {
@@ -111,7 +105,8 @@ void World::BuildAndSolveIslands(float dt) {
 
     // 2. 遍历所有物体寻找“种子”
     for (Body* seed : m_bodies) {
-        if (seed->m_islandFlag || seed->getInvMass() == 0.0f) continue;
+        //检查该岛屿是否符合休眠条件。
+        if (seed->m_islandFlag || seed->getInvMass() == 0.0f||!seed->IsAwake()) continue;
 
         // --- DFS 诊断日志：发现新岛屿 ---
         islandCount++;
@@ -144,15 +139,20 @@ void World::BuildAndSolveIslands(float dt) {
                 contactsInIsland++; // 计数
 
                 Body* other = ce->other;
-                if (other->m_islandFlag) continue;
-
                 if (other->getInvMass() > 0.0f) {
+                    if (other->m_islandFlag) continue; // 已经处理过的动态物体，跳过
+
+                    if (!other->IsAwake()) {
+                        other->setAwake(true);
+                    }
+
+                    // 标记并入栈，继续向外传染岛屿
                     other->m_islandFlag = true;
                     stack.push_back(other);
                 }
+                
                 else {
                     island.Add(other);
-                    // 静态物体不标记，bodiesInIsland 不统计它（可选，看你需求）
                 }
             }
         }
@@ -166,6 +166,9 @@ void World::BuildAndSolveIslands(float dt) {
         //             " dynamic bodies and " + std::to_string(contactsInIsland) + " contacts.");
         //
 
+        
+
+        
         // 4. 解算
         island.Solve(step, m_gravity);
     }

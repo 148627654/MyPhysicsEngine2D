@@ -49,6 +49,10 @@ public:
 		if (nodeId < 0 || nodeId >= m_nodeCapacity) return false;
 		return m_nodes[nodeId].isLeaf();
 	}
+	const AABB& GetFatAABB(int32_t proxyId) const {
+		// 假设你的节点数组叫 m_nodes
+		return m_nodes[proxyId].aabb;
+	}
 	void RayCast(RayCastInput& input, std::function<float(RayCastInput& input, int32_t nodeId)> callback);
 private:
 	int32_t AllocateNode( );

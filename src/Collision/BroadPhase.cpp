@@ -65,3 +65,12 @@ void BroadPhase::BufferMove(int32_t proxyId) {
 	// 把移动过的物体索引放进 vector
 	m_moveBuffer.push_back(proxyId);
 }
+
+bool BroadPhase::TestOverlap(int32_t proxyIdA, int32_t proxyIdB) const
+{
+	const AABB& aabbA = m_tree.GetFatAABB(proxyIdA);
+	const AABB& aabbB = m_tree.GetFatAABB(proxyIdB);
+
+	// 调用你 AABB 结构体中已经写好的 Overlap 函数
+	return aabbA.Overlap(aabbB);
+}

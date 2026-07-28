@@ -24,6 +24,8 @@ public:
 	void BuildAndSolveIslands(float dt);
 	std::map<std::pair<Body*, Body*>, Contact*> getContactMap() { return m_contactMap; }
 private:
+	void AddContactToGraph(Contact* c);
+	void RemoveContactFromGraph(Contact* c);
 	std::vector<Body*> m_bodies;
 	Vector2 m_gravity;
 	std::vector<Manifold> m_manifolds;

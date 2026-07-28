@@ -64,3 +64,15 @@ void Body::ApplyImpulse(const Vector2& impulse, const Vector2& contactVector) {
     velocity += impulse * invMass;
     angularVelocity += invInertia * Vector2::Cross(contactVector, impulse);
 }
+
+void Body::setAwake(bool w) {
+    if (w) {
+        m_isAwake = true;
+        m_sleepTimer = 0.0f; // 只要醒了，重新开始计算“疲劳值”
+    }
+    else {
+        m_isAwake = false;
+        m_sleepTimer = 0.0f;
+        // 入睡时，理论上速度应该已经被归零（在 Island::Solve 里处理了）
+    }
+}

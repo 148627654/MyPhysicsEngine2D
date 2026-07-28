@@ -10,6 +10,42 @@ IsLand::IsLand(int bodyCapacity, int contactCapacity) {
 void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
     float dt = step.dt;
 
+    float minSleepTimer = 1000.0f;
+
+    // 1. 能量监控
+    for (Body* b : m_bodies) {
+        if (b->getInvMass() == 0.0f) continue;
+
+        // 如果该物体禁止休眠，或者当前是清醒的且动能大
+        float linearVelocitySq = b->GetVelocity().LengthSquared();
+        float angularVelocitySq = b->getAngularVelocity() * b->getAngularVelocity();
+
+        if (!b->IsSleepAllow() ||
+            linearVelocitySq > Settings::LinearSleepThreshold ||
+            angularVelocitySq > Settings::AngularSleepThreshold)
+        {
+            //printf("Body Energy: %f | Threshold: %f\n", linearVelocitySq, Settings::LinearSleepThreshold);
+            //printf("Body Energy: %f | Threshold: %f\n", angularVelocitySq, Settings::AngularSleepThreshold);
+            b->setSleepTimer(0.0f);
+            minSleepTimer = 0.0f;
+        }
+        else {
+            b->setSleepTimer(b->getSleepTimer() + dt);
+            minSleepTimer = std::min(minSleepTimer, b->getSleepTimer());
+        }
+    }
+
+    // 2. 尝试集体入睡
+    if (minSleepTimer >= Settings::TimeToSleep) {
+        for (Body* b : m_bodies) {
+            if (b->getInvMass() > 0.0f) {
+                b->setAwake(false);
+                b->SetVelocity(Vector2(0, 0)); // 物理平滑优化
+                b->setAngularVelocity(0.0f);
+            }
+        }
+        return;
+    }
     // --- 1. 速度积分 ---
     for (Body* b : m_bodies) {
         if (b->getInvMass() == 0.0f) continue;

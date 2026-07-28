@@ -68,12 +68,12 @@ void RunEnhancedIslandTest() {
     Logger::Info("Success: Verify that Box A and Box B moved independently.");
 }
 
-int main() {
-    try {
-        RunEnhancedIslandTest();
-    }
-    catch (const std::exception& e) {
-        Logger::Error("Test failed with exception: " + std::string(e.what()));
-    }
-    return 0;
-}
+//int main() {
+//    try {
+//        RunEnhancedIslandTest();
+//    }
+//    catch (const std::exception& e) {
+//        Logger::Error("Test failed with exception: " + std::string(e.what()));
+//    }
+//    return 0;
+//}

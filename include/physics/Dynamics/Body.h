@@ -9,29 +9,37 @@ struct ContactEdge;
 class Body
 {
 public:
-	Body(Shape* s, float x=0.0, float y=0.0, float density = 1.0f)
+	Body(Shape* s, float x = 0.0, float y = 0.0, float density = 1.0f)
 		: shape(s), position(Vector2(x, y)), rotation(0.0f),
 		velocity(Vector2(0, 0)), angularVelocity(0.0f),
 		force(Vector2(0, 0)), torque(0.0f), gravityScale(1.0f)
 	{
-		// 根据形状和密度计算质量属性
 		if (density > 0.0f && shape != nullptr) {
+			// --- 动态物体逻辑 ---
 			MassData data = shape->ComputeMass(density);
 			this->mass = data.mass;
 			this->invMass = 1.0f / mass;
 			this->inertia = data.inertia;
 			this->invInertia = 1.0f / inertia;
+
+			m_isAwake = true;           // 动态物体初始是醒着的
+			m_isSleepAllowed = true;    // 允许休眠
 		}
 		else {
-			// 静态物体：质量和惯量视为无穷大，倒数为 0
+			// --- 静态物体逻辑 ---
 			this->mass = 0.0f;
 			this->invMass = 0.0f;
 			this->inertia = 0.0f;
 			this->invInertia = 0.0f;
+
+			m_isAwake = false;          // 静态物体永远“不醒”（不主动触发解算）
+			m_isSleepAllowed = false;   // 静态物体不需要休眠逻辑
 		}
-		this->restitution = 0.5f; // 默认弹力 0.5
-		this->friction = 0.2f;    // 默认摩擦 0.2
-		updateAABB( );
+
+		this->restitution = 0.5f;
+		this->friction = 0.2f;
+		this->m_sleepTimer = 0.0f;      // 计时器清零
+		updateAABB();
 	}
 	inline void ClearForce() { force.Clear(); }
 	Vector2 AddForce(Vector2 f);
@@ -44,7 +52,7 @@ public:
 	Shape* GetShape()const { return shape; };
 	float GetRotation()const { return rotation; }
 	void SetRotation(float r);
-	void SetVelocity(Vector2 v) { velocity = v; }
+	void SetVelocity(Vector2 v) { velocity = v;}
 	AABB GetAABB( )const { return worldAABB; }
 	float getAngularVelocity( )const { return angularVelocity; }
 	void setAngularVelocity(float av) { angularVelocity = av; }
@@ -72,6 +80,13 @@ public:
 	inline void setGravityScale(float g) { gravityScale = g; }
 	inline float getTorque() { return torque; }
 	inline void setTorque(float t) { torque = t; }
+	void setAwake(bool w);
+	inline bool IsAwake() const { return m_isAwake; }
+	inline bool IsSleepAllow() const { return m_isSleepAllowed; }
+	inline void setSleepAllow(bool a) { m_isSleepAllowed = a; }
+	inline float getSleepTimer() const { return m_sleepTimer; }
+	inline void setSleepTimer(float time) { m_sleepTimer = time; }
+	
 private:
 	friend struct ContactEdge;
 	friend class World;
@@ -104,4 +119,7 @@ private:
 	ContactEdge* m_contactList = nullptr;
 	//岛屿的遍历
 	bool m_islandFlag = false;
+	bool m_isAwake;			//是否处于清醒状态。
+	bool m_isSleepAllowed;	//是否允许该物体休眠。
+	float m_sleepTimer;				//当前物体处于低能量状态的持续时间。
 };

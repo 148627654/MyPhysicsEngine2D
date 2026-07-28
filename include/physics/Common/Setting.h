@@ -18,4 +18,8 @@ namespace Settings
     static constexpr float k_aabbExtension = 0.1f;      //单位长度
     static constexpr float k_aabbMultiplier = 2.0f;     //位移预测倍率
 
+    static constexpr float LinearSleepThreshold = 0.2f;
+    static constexpr float AngularSleepThreshold = 0.2f;  //(角速度阈值)
+    static constexpr float TimeToSleep = 0.5f;
+
 }

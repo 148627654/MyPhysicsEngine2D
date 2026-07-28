@@ -29,6 +29,7 @@ public:
 	void RayCast(RayCastInput& input, std::function<float(RayCastInput&, int32_t)> callback) {
 		m_tree.RayCast(input, callback);
 	}
+	bool TestOverlap(int32_t proxyIdA, int32_t proxyIdB) const;
 	void* GetUserData(int32_t proxyId) const {
 		return m_tree.GetUserData(proxyId);
 	}
