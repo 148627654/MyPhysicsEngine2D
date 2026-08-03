@@ -7,10 +7,20 @@
 void World::Step(float dt) {
     // --- 1. 同步坐标 (这一步必须最先做) ---
     for (Body* b : m_bodies) {
-        if (b->getInvMass() > 0.0f && b->IsAwake()) {
-            b->updateAABB();
-            m_broadPhase.MoveProxy(b->getProxyId(), b->GetAABB(), b->GetVelocity() * dt);
+        if (b->getInvMass() == 0.0f) continue;
+
+        if (!b->IsAwake()) {
+            // 【补充：状态断言/强制归零】
+            // 如果物体是睡着的，它的速度必须是 0。
+            assert(b->GetVelocity().LengthSquared() == 0); 
+            // 或者保险起见直接强制设为 0。
+            b->velocity.Clear();
+            b->angularVelocity = 0.0f;
+            continue;
         }
+
+        b->updateAABB();
+        m_broadPhase.MoveProxy(b->getProxyId(), b->GetAABB(), b->GetVelocity() * dt);
     }
 
     // --- 2. 存活检查 (Persistence) ---
@@ -78,17 +88,45 @@ void World::RemoveContactFromGraph(Contact* c) {
 }
 
 void World::RemoveBody(Body* body) {
-	// 1. 从宽相中安全摘除
-	if (body->getProxyId() != -1) {
-		m_broadPhase.DestroyProxy(body->getProxyId());
-	}
+    if (body == nullptr) return;
 
-	// 2. 从列表移除并释放内存
-	auto it = std::find(m_bodies.begin(), m_bodies.end(), body);
-	if (it != m_bodies.end()) {
-		m_bodies.erase(it);
-		delete body;
-	}
+    // 1. 【核心修复】：从碰撞图中彻底抹除该物体
+    ContactEdge* ce = body->getContactList();
+    while (ce != nullptr) {
+        Contact* contact = ce->contact;
+        ce = ce->next; // 提前保存下一个，因为当前的 contact 马上要被删了
+
+        // A. 唤醒邻居（防止悬空）
+        contact->m_bodyA->setAwake(true);
+        contact->m_bodyB->setAwake(true);
+
+        // B. 从全局 map 中移除（根据 A,B 指针生成的 key）
+        Body* bA = contact->m_bodyA;
+        Body* bB = contact->m_bodyB;
+        if (bA > bB) std::swap(bA, bB);
+        auto key = std::make_pair(bA, bB);
+        m_contactMap.erase(key);
+
+        // C. 从两个物体的双向链表中安全摘除（调用你之前写的辅助函数）
+        RemoveContactFromGraph(contact);
+
+        // D. 销毁 Contact 对象
+        delete contact;
+    }
+
+    // 2. 从宽相树中移除代理
+    if (body->getProxyId() != -1) {
+        m_broadPhase.DestroyProxy(body->getProxyId());
+    }
+
+    // 3. 从世界物体列表中移除
+    auto it = std::find(m_bodies.begin(), m_bodies.end(), body);
+    if (it != m_bodies.end()) {
+        m_bodies.erase(it);
+    }
+
+    // 4. 最后才真正释放内存
+    delete body;
 }
 
 void World::BuildAndSolveIslands(float dt) {
@@ -156,19 +194,6 @@ void World::BuildAndSolveIslands(float dt) {
                 }
             }
         }
-
-        // --- DFS 诊断日志：岛屿构建完成 ---
-        // 仅在每一秒（约60帧）打印一次，或者在物体数量变动时打印，防止刷屏
-        // 这里为了测试先直接打印
-        
-        //Logger::Info("DFS: Island " + std::to_string(islandCount) +
-        //             " created with " + std::to_string(bodiesInIsland) +
-        //             " dynamic bodies and " + std::to_string(contactsInIsland) + " contacts.");
-        //
-
-        
-
-        
         // 4. 解算
         island.Solve(step, m_gravity);
     }

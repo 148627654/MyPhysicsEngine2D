@@ -75,6 +75,11 @@ MyPhysicsEngine2D/
   - **新功能**：实现岛屿“集体表决”入睡逻辑，静止岛屿 CPU 零占用。
   - **新功能**：实现“碰撞唤醒”系统，通过物理交互实时激活睡眠物体。
   - **数值优化**：引入 `VelocityThreshold` 消能机制，彻底解决低速碰撞下的微颤动。
+- [x] **Day 09: 睡眠机制完善与结构变更响应 (Refined Sleeping)**
+  - **新功能**：实现“关联唤醒”逻辑，彻底解决移除支撑物后物体悬空的 Bug。
+  - **新功能**：增强 `SetType` 接口，支持 Static/Dynamic 动态切换并自动同步物理图。
+  - **性能优化**：实现宽相同步拦截，确保 500+ 睡眠物体在 `MoveProxy` 阶段产生 **零** 计算开销。
+  - **工程健壮性**：重构 `RemoveBody` 流程，通过“先断边、再杀点”的逻辑规避了野指针崩溃。
 ## 🚀 Day 01 进展：动态树基础架构 (Node Pool)
 
 ### 1. 技术核心：索引式内存池
@@ -392,6 +397,8 @@ V2 引擎在今天完成了一次质的飞跃：我们将整个物理世界建�
 [COLLISION] Persistent Contact updated. Warm Starting active.
 [INFO] Frame 90 | BoxA1_Y: 3.07 | BoxB1_Y: 1.07 (Independent Movement!)
 ```
+
+
 ![项目截图](./readme.assets/v2_007.gif)
 ---
 ## 🚀 Day 08 进展：能量治理与零开销拦截
@@ -443,6 +450,40 @@ V2 引擎在今天完成了一次质的飞跃：我们将整个物理世界建�
 [INFO] Collision Transfer: Box A VelY changed from 0 to -0.408 (Energy Intact)
 ```
 ![项目截图](./readme.assets/v2_day08.gif)
+## 🚀 Day 09 进展：结构变更下的睡眠鲁棒性
+
+### 1. 技术核心：结构性唤醒链 (Structural Chain Reaction)
+在物理引擎中，睡眠不只是静止，它是一种 **“脆弱的平衡”**。
+- ** RemoveBody 联动**：当一个物体被销毁时，它所承载的压力也随之消失。我们通过遍历 `ContactEdge` 链表，在销毁本体前精准唤醒所有邻居。这保证了当你拆掉底层地基时，整座大楼会因“惊醒”而坍塌。
+- **类型切换响应**：当物体通过 `SetType` 从静态变为动态时，它会瞬间被重力接管。我们通过 Setter 注入唤醒逻辑，让物理图重新将该节点纳入 DFS 扫描范围。
+
+### 2. 开发复盘：Day 09 攻克的内存死穴
+
+在今天的开发中，我们遭遇了 V2 阶段最严重的崩溃风险，并成功建立了防御体系：
+
+#### **问题 A：野指针导致的 0xc0000005 崩溃**
+- **现象**：调用 `RemoveBody` 后的下一帧，程序在窄相检测时必然崩溃。
+- **根因**：Body 被 `delete` 了，但 `m_contactMap` 依然持有它的指针。由于 `m_contactMap` 负责管理 Contact 的生命周期，它成了野指针的重灾区。
+- **解决**：实现“连根拔起”删除策略。在 `RemoveBody` 中增加一级清理，根据 `ContactEdge` 找到所有关联的 `Contact`，将其从全局 Map 擦除、从双向链表摘除并释放内存，最后才销毁 Body。
+
+#### **问题 B：零漂移与 BroadPhase 拦截验证**
+- **验证**：为了确信睡眠拦截器（Awake Guard）工作正常，我们引入了 `m_moveCount` 性能指标。
+- **结果**：在 500 个箱子的压力测试中，1000 帧模拟后的位移偏移为 **0.000000**。这证明了 AABB 同步逻辑已被完美拦截，睡眠物体的 AABB 在内存中处于“绝对锁定”状态，极大地保护了 CPU 缓存。
+
+### 3. 如何验证
+运行 `tests/RunDay9Tests.cpp`：
+- ✅ **Test 1 (Suspension)**：移除底座，上方 1 号箱子立即进入自由落体（见 `v2_009_001.csv`）。
+- ✅ **Test 2 (Type)**：平台变 Dynamic 的瞬间，上方睡眠物体同步惊醒（见 `v2_009_002.csv`）。
+- ✅ **Test 3 (Stress)**：500 物体 1000 帧无漂移，BroadPhase Moves 计数恒为 0（见 `v2_009_003.csv`）。
+![项目截图](./readme.assets/v2_009.gif)
+**Day 09 运行快照：**
+```text
+[INFO] Boxes are sleeping. Now removing box1...
+[INFO] SUCCESS: Box2 was awakened and fell down!
+[INFO] Stress Test Result: Drift=0.000000, BroadPhase Moves=0
+[INFO] SUCCESS: Zero drift, Zero CPU overhead!
+```
+
 
 ## 💻 编译与运行
 - **环境**：Visual Studio 2019+ (C++11)

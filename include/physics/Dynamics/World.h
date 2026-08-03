@@ -23,6 +23,7 @@ public:
 	void RemoveBody(Body* body);
 	void BuildAndSolveIslands(float dt);
 	std::map<std::pair<Body*, Body*>, Contact*> getContactMap() { return m_contactMap; }
+	BroadPhase& GetBroadPhase() { return m_broadPhase; }
 private:
 	void AddContactToGraph(Contact* c);
 	void RemoveContactFromGraph(Contact* c);

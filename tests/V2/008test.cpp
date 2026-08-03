@@ -84,9 +84,9 @@ void RunCollisionWakeupTest() {
     }
 }
 
-int main() {
-    // 确保目录存在
-    // _mkdir("output"); 
-    RunCollisionWakeupTest();
-    return 0;
-}
+//int main() {
+//    // 确保目录存在
+//    // _mkdir("output"); 
+//    RunCollisionWakeupTest();
+//    return 0;
+//}

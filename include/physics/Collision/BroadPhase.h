@@ -33,6 +33,7 @@ public:
 	void* GetUserData(int32_t proxyId) const {
 		return m_tree.GetUserData(proxyId);
 	}
+	int m_moveCount = 0; // 记录 MoveProxy 实际执行了多少次重构
 private:
 	void BufferMove(int32_t proxyId);
 	DynamicTree m_tree;

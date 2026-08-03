@@ -4,6 +4,11 @@
 //#include "../Collision/Manifold.h"
 class Contact;
 struct ContactEdge;
+enum class BodyType {
+	Static,
+	Dynamic
+};
+
 
 
 class Body
@@ -86,7 +91,8 @@ public:
 	inline void setSleepAllow(bool a) { m_isSleepAllowed = a; }
 	inline float getSleepTimer() const { return m_sleepTimer; }
 	inline void setSleepTimer(float time) { m_sleepTimer = time; }
-	
+	void SetType(BodyType type, float density = 1.0f);
+	void ForceSleep();
 private:
 	friend struct ContactEdge;
 	friend class World;
