@@ -24,6 +24,7 @@ public:
 	void BuildAndSolveIslands(float dt);
 	std::map<std::pair<Body*, Body*>, Contact*> getContactMap() { return m_contactMap; }
 	BroadPhase& GetBroadPhase() { return m_broadPhase; }
+	void WakeNeighbors(Body* body);
 private:
 	void AddContactToGraph(Contact* c);
 	void RemoveContactFromGraph(Contact* c);

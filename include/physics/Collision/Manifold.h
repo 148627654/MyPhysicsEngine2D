@@ -7,9 +7,11 @@ struct Manifold
 {
 public:
 	Manifold(Body* a, Body* b)
-		:bodyA(a), bodyB(b), normal(Vector2(0, 0)), penetration(0) {
-		impulseN[ 0 ] = impulseN[ 1 ] = 0.0f;
-		impulseT[ 0 ] = impulseT[ 1 ] = 0.0f;
+		: bodyA(a), bodyB(b), normal(0, 0), penetration(0), contactCount(0) {
+		impulseN[0] = impulseN[1] = 0.0f;
+		impulseT[0] = impulseT[1] = 0.0f;
+		massNormal[0] = massNormal[1] = 0.0f;
+		massTangent[0] = massTangent[1] = 0.0f;
 	}
 	Body* bodyA;					//参与碰撞的第一个物体
 	Body* bodyB;					//参与碰撞的第二个物体
@@ -21,4 +23,9 @@ public:
 	// --- 关键：为了第 12 天的稳定解算，我们需要记录上一次施加的冲量 ---
 	float impulseN[ 2 ];    // 每个接触点的累积法向冲量
 	float impulseT[ 2 ];    // 每个接触点的累积切向（摩擦）冲量
+	//由于每个碰撞对最多有两个接触点，我们需要为每个点缓存有效质量。
+	float massNormal[2];  // 法向有效质量的倒数 (1/K)
+	float massTangent[2]; // 切向有效质量的倒数
+	Vector2 rA[2];        // 质心到接触点的向量 (Body A)
+	Vector2 rB[2];        // 质心到接触点的向量 (Body B)
 };

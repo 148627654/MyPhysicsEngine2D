@@ -241,3 +241,19 @@ void World::RayCast(Vector2 p1, Vector2 p2) {
 	// 6. 调用宽相进行全局扫描
 	m_broadPhase.RayCast(input, broadPhaseCallback);
 }
+
+void World::WakeNeighbors(Body* body)
+{
+    if (body == nullptr || body->getInvMass() == 0.0f) return;
+    ContactEdge* ce = body->getContactList();
+    while (ce != nullptr) {
+        Body* other = ce->other;
+
+        // 关键：只唤醒动态物体（静态物体不需要醒）
+        if (other->getInvMass() > 0.0f) {
+            other->setAwake(true); // 这个函数内部会重置 timer
+        }
+
+        ce = ce->next;
+    }
+}

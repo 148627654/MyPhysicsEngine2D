@@ -61,11 +61,14 @@ void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
         b->ClearForce();
         b->setTorque(0.0f);
     }
+    //PreSolve
+    for (Contact* c : m_contacts) {
+        c->PreSolve(step.dt);
+    }
 
     // --- 2. 冲量解算 (Velocity Constraints) ---
     for (int i = 0; i < step.velocityIterations; ++i) {
         for (Contact* c : m_contacts) {
-            // 这里调用你 V1 写好的 ImpulseSolver
             ImpulseSolver(c->GetManifold());
         }
     }

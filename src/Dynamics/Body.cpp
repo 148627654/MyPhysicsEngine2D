@@ -63,10 +63,12 @@ void Body::updateAABB()
 
 void Body::ApplyImpulse(Vector2 impulse)
 {
+    if (invMass == 0.0f) return;
     velocity += impulse * invMass;
 }
 
 void Body::ApplyImpulse(const Vector2& impulse, const Vector2& contactVector) {
+    if (invMass == 0.0f) return;
     velocity += impulse * invMass;
     angularVelocity += invInertia * Vector2::Cross(contactVector, impulse);
 }

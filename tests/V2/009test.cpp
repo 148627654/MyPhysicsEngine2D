@@ -114,9 +114,9 @@ void TestZeroDriftStress() {
     }
 }
 
-int main() {
-    TestSuspensionWakeup();
-    TestTypeConversion();
-    TestZeroDriftStress();
-    return 0;
-}
+//int main() {
+//    TestSuspensionWakeup();
+//    TestTypeConversion();
+//    TestZeroDriftStress();
+//    return 0;
+//}

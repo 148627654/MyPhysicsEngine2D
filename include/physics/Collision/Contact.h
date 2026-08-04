@@ -24,7 +24,7 @@ public:
     // 两个边缘，分别挂在两个 Body 的链表上
     ContactEdge m_nodeA;
     ContactEdge m_nodeB;
-
+    void PreSolve(float dt);
     Body* m_bodyA;
     Body* m_bodyB;
 

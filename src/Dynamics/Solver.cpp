@@ -17,64 +17,54 @@ void ImpulseSolver(Manifold& m) {
     float invMassB = B->getInvMass();
     float invInertiaA = A->getInvInertia();
     float invInertiaB = B->getInvInertia();
-    float invMassSum = invMassA + invMassB;
 
-    float e = std::min(A->getRestitution(), B->getRestitution());
+    // 摩擦系数
     float mu = std::sqrt(A->getFriction() * B->getFriction());
 
     for (int i = 0; i < m.contactCount; ++i) {
-        Vector2 rA = m.contacts[i] - A->GetPosition();
-        Vector2 rB = m.contacts[i] - B->GetPosition();
-
-        // 1. 法向冲量解算
-        Vector2 vA_p = A->GetVelocity() + Vector2::Cross(A->getAngularVelocity(), rA);
-        Vector2 vB_p = B->GetVelocity() + Vector2::Cross(B->getAngularVelocity(), rB);
+        // --- 1. 计算当前接触点的相对速度 ---
+        // 注意：使用 PreSolve 缓存的 rA[i] 和 rB[i]
+        Vector2 vA_p = A->GetVelocity() + Vector2::Cross(A->getAngularVelocity(), m.rA[i]);
+        Vector2 vB_p = B->GetVelocity() + Vector2::Cross(B->getAngularVelocity(), m.rB[i]);
         Vector2 v_rel = vB_p - vA_p;
 
+        // --- 2. 法向增量冲量解算 ---
         float v_normal = v_rel.Dot(m.normal);
-        if (v_normal > 0) continue; // 正在分离
 
-        float rAn = Vector2::Cross(rA, m.normal);
-        float rBn = Vector2::Cross(rB, m.normal);
-        float shareDenominator = invMassSum + (rAn * rAn * invInertiaA) + (rBn * rBn * invInertiaB);
+        // 计算本次迭代需要的冲量增量 jn
+        // 注意：这里不再乘 (1+e)，弹力已经在 PreSolve 的初始速度里处理了（见下文 Tip）
+        float jn = -v_normal * m.massNormal[i];
 
-        float jn = -(1.0f + e) * v_normal / shareDenominator;
-        jn /= (float)m.contactCount;
+        // 【关键】：累加并 Clamp 总冲量
+        float oldImpulseN = m.impulseN[i];
+        m.impulseN[i] = std::max(oldImpulseN + jn, 0.0f); // 保证总冲量永远 >= 0 (不会吸在一起)
+        float actual_jn = m.impulseN[i] - oldImpulseN;   // 算出本轮真正施加的增量
 
-        Vector2 impulseN = m.normal * jn;
-        A->ApplyImpulse(-impulseN, rA);
-        B->ApplyImpulse(impulseN, rB); // 假设你有这个函数或者直接操作
+        // 应用增量冲量
+        Vector2 impulseN_vec = m.normal * actual_jn;
+        A->ApplyImpulse(-impulseN_vec, m.rA[i]);
+        B->ApplyImpulse(impulseN_vec, m.rB[i]);
 
-        // 2. 切向冲量 (摩擦力) 解算
-        // 必须重新计算速度，因为法向冲量刚刚改变了它
-        vA_p = A->GetVelocity() + Vector2::Cross(A->getAngularVelocity(), rA);
-        vB_p = B->GetVelocity() + Vector2::Cross(B->getAngularVelocity(), rB);
+        // --- 3. 切向增量冲量 (摩擦力) 解算 ---
+        // 重新计算速度以包含刚刚法向冲量的影响
+        vA_p = A->GetVelocity() + Vector2::Cross(A->getAngularVelocity(), m.rA[i]);
+        vB_p = B->GetVelocity() + Vector2::Cross(B->getAngularVelocity(), m.rB[i]);
         v_rel = vB_p - vA_p;
 
-        Vector2 tangent = v_rel - (m.normal * v_rel.Dot(m.normal));
-        if (tangent.LengthSquared() > 0.0001f) {
-            tangent = tangent.Normalize();
-        }
-        else {
-            continue;
-        }
-
+        Vector2 tangent = Vector2::Cross(m.normal, 1.0f); // 2D 切线
         float vt = v_rel.Dot(tangent);
-        float rAt = Vector2::Cross(rA, tangent);
-        float rBt = Vector2::Cross(rB, tangent);
-        float frictionDenominator = invMassSum + (rAt * rAt * invInertiaA) + (rBt * rBt * invInertiaB);
+        float jt = -vt * m.massTangent[i];
 
-        float jt = -vt / frictionDenominator;
-        jt /= (float)m.contactCount;
+        //累加并限制摩擦力总冲量 (库仑定律)
+        float oldImpulseT = m.impulseT[i];
+        float maxFriction = mu * m.impulseN[i]; // 基于当前总法向冲量限制
+        m.impulseT[i] = std::max(-maxFriction, std::min(oldImpulseT + jt, maxFriction));
+        float actual_jt = m.impulseT[i] - oldImpulseT; // 算出本轮真正施加的切向增量
 
-        // --- C++11 适配：库仑定律限制 ---
-        float maxFriction = jn * mu;
-        if (jt > maxFriction) jt = maxFriction;
-        else if (jt < -maxFriction) jt = -maxFriction;
-
-        Vector2 impulseT = tangent * jt;
-        A->ApplyImpulse(-impulseT, rA);
-        B->ApplyImpulse(impulseT, rB);
+        // 应用增量切向冲量
+        Vector2 impulseT_vec = tangent * actual_jt;
+        A->ApplyImpulse(-impulseT_vec, m.rA[i]);
+        B->ApplyImpulse(impulseT_vec, m.rB[i]);
     }
 }
 
