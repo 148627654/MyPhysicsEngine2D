@@ -22,7 +22,7 @@ public:
 	void RayCast(Vector2 p1, Vector2 p2);
 	void RemoveBody(Body* body);
 	void BuildAndSolveIslands(float dt);
-	std::map<std::pair<Body*, Body*>, Contact*> getContactMap() { return m_contactMap; }
+	inline const std::map<std::pair<Body*, Body*>, Contact*>& getContactMap() const {return m_contactMap;}
 	BroadPhase& GetBroadPhase() { return m_broadPhase; }
 	void WakeNeighbors(Body* body);
 private:

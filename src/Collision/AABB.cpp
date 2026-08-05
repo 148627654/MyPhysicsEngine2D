@@ -12,6 +12,11 @@ AABB AABB::Union(const AABB& a, const AABB& b)
 	return ans;
 }
 
+AABB AABB::Combine(const AABB& a, const AABB& b)
+{
+    return Union(a,b);
+}
+
 float AABB::GetPerimeter() const
 {
 	float width = max.getX() - min.getY();

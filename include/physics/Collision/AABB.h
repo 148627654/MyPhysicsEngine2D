@@ -14,6 +14,8 @@ struct AABB {
 
 	static AABB Union(const AABB& a, const AABB& b);
 
+	static AABB Combine(const AABB& a, const AABB& b);
+
 	// 动态树（BVH）在选择分支时通常使用“周长”作为代价函数，这在 2D 中比面积更稳定
 	float GetPerimeter() const;
 

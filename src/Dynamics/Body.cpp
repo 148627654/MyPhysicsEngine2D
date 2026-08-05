@@ -128,7 +128,18 @@ void Body::ForceSleep() {
     force.Clear();
     torque = 0.0f;
 
-    // 4. 【非常重要】：必须物理性停稳
+    // 4. 必须物理性停稳
     velocity.Clear();
     angularVelocity = 0.0f;
+}
+
+AABB Body::GetSweptAABB(float dt) const
+{
+	AABB aabb1 = this->GetAABB();
+
+    //预测下一帧的位置
+	Vector2 predictedPosition = this->GetPosition() + this->GetVelocity() * dt;
+	AABB aabb2 = shape->ComputeAABB(predictedPosition, this->GetRotation());
+
+	return AABB::Combine(aabb1, aabb2);
 }

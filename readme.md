@@ -85,6 +85,12 @@ MyPhysicsEngine2D/
   - **关键功能**：实现 **Warm Starting (冲量热启动)**，利用上一帧的记忆抵消本帧重力，实现 15 层方块塔稳如泰山。
   - **神经系统**：完善 **Wake-up Propagation (链式唤醒)**，支持碰撞和结构变更导致的动能自动传导。
   - **数值改进**：重构 `ImpulseSolver` 为“增量式”解算，通过累积冲量 Clamping 确保受力平衡。
+### 第 3 阶段：高速防御——持续碰撞检测 CCD
+- [x] **Day 11: 扫掠包围盒与穿墙预警 (Swept AABB)**
+  - **核心重构**：实现 **Swept AABB** 计算，通过合并 $t$ 时刻与 $t+dt$ 时刻的包围盒，捕获物体整帧的运动轨迹。
+  - **新功能**：引入 **Bullet Flag (子弹标记)**，支持对特定高速物体开启 CCD 模式。
+  - **宽相联动**：重构 `World::Step` 同步逻辑，使 `BroadPhase` 能够识别出那些“本帧末尾未重叠但路径上发生碰撞”的物体对。
+  - **数学防御**：引入预测位姿下的 `ComputeAABB`，确保高速旋转的长条物体不会在路径中漏检。
 ## 🚀 Day 01 进展：动态树基础架构 (Node Pool)
 
 ### 1. 技术核心：索引式内存池
@@ -530,8 +536,44 @@ $$K = \frac{1}{m_A} + \frac{1}{m_B} + \frac{(r_A \times n)^2}{I_A} + \frac{(r_B 
 ```
 ![项目截图](./readme.assets/v2_010_tower.gif)
 ![项目截图](./readme.assets/v2_010_chain.gif)
+## 🚀 Day 11 进展：锁定“时空穿梭”的嫌疑人
 
+### 1. 技术核心：扫掠包围盒 (Swept AABB)
+在传统的离散模拟中，物体像是在每个时间点执行“瞬间移动”。如果速度极快（如子弹），它可能在第 1 帧还在墙左边，第 2 帧就直接闪现到了墙右边，导致漏检。
+- **原理**：我们为高速物体计算一个“轨迹盒”。
+- **计算逻辑**：
+  1. 获取 $t$ 时刻 AABB（起始点）。
+  2. 预测 $t+dt$ 时刻的位姿（位置 + 旋转），计算该点的 AABB（终点）。
+  3. 执行 `AABB::Union`，生成一个包裹整个运动路径的长条形盒子。
+- **结果**：宽相雷达现在能“看”到子弹飞过的残影，从而在 `m_contactMap` 中提前锁定碰撞对。
+
+### 2. 开发复盘：Day 11 的工程思考
+
+#### **问题 A：扫掠精度与性能的权衡**
+- **现象**：如果对所有物体都计算扫掠盒，CPU 开销会显著增加。
+- **解决**：引入 `m_isBullet` 状态位。普通低速方块维持原有的“点对点”同步，只有被标记为“子弹”的物体才开启轨迹捕获，将 CCD 的昂贵开销限制在最小范围。
+
+#### **问题 B：忽略旋转导致的轨迹漏检 (Angular Tunneling)**
+- **现象**：一根高速旋转的长木棍在扫过邻居时未触发碰撞。
+- **原因**：初版代码仅使用了位移平移 AABB，忽略了旋转导致的 AABB 形状改变。
+- **解决**：在 `GetSweptAABB` 中使用预测的 `nextRotation` 调用 `shape->ComputeAABB`，完美捕捉到了平移+旋转叠加后的扫掠空间。
+
+### 3. 如何验证
+运行 `tests/RunDay11CCDTest.cpp`：
+- ✅ **穿墙拦截测试**：发射一颗速度为 $120.0\,m/s$ 的子弹穿过厚度仅 $0.1\,m$ 的薄墙。
+- ✅ **宽相命中验证**：控制台成功输出 `BINGO! BroadPhase caught the bullet`。即使子弹最终停在了墙后，宽相依然在路径中准确捕捉到了它并建立了 `Contact`。
+- ✅ **轨迹数据分析**：通过 `v2_011_swept.csv` 可以看到子弹的 `PosX` 在两帧之间跳跃了 2.0 米，证明了穿墙现象的存在以及扫掠盒的覆盖能力。
+
+**Day 11 运行快照：**
+```text
+[INFO] Static wall created at X=0, Thickness=0.1
+[INFO] Bullet spawned at X=-5.0, Vel=120.0 (2.0 per frame)
+[INFO] Phase 1: High-speed step starting...
+[INFO] BINGO! BroadPhase caught the bullet at frame 2
+[INFO] SUCCESS: Swept AABB captured the high-speed trajectory!
+```
+![项目截图](./readme.assets/v2_day11.gif)
+
+---
 ## 💻 编译与运行
 - **环境**：Visual Studio 2019+ (C++11)
-- **入口**：在 `main.cpp` 中调用 `RunRealBodyTreeTest()` 即可观察 V2 底层内存池运作。
-

@@ -99,13 +99,13 @@ void TestTowerStability() {
     Logger::Info("Tower collapse finished. Check 'v2_010_tower.csv'.");
 }
 
-int main() {
-    try {
-        TestChainWakeup();
-        TestTowerStability();
-    }
-    catch (...) {
-        Logger::Error("An error occurred during Day 10 tests.");
-    }
-    return 0;
-}
+//int main() {
+//    try {
+//        TestChainWakeup();
+//        TestTowerStability();
+//    }
+//    catch (...) {
+//        Logger::Error("An error occurred during Day 10 tests.");
+//    }
+//    return 0;
+//}

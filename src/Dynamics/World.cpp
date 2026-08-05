@@ -19,8 +19,22 @@ void World::Step(float dt) {
             continue;
         }
 
+        // A. 更新物体当前时刻的 Tight AABB
         b->updateAABB();
-        m_broadPhase.MoveProxy(b->getProxyId(), b->GetAABB(), b->GetVelocity() * dt);
+
+        // B. 计算同步到宽相树的 AABB
+        AABB broadPhaseAABB;
+        if (b->IsBullet()) {
+            // 如果是高速子弹，同步它本帧划过的整个轨迹盒
+            broadPhaseAABB = b->GetSweptAABB(dt);
+        }
+        else {
+            // 普通物体，同步它当前的盒子
+            broadPhaseAABB = b->GetAABB();
+        }
+
+        // C. 同步到 BroadPhase
+        m_broadPhase.MoveProxy(b->getProxyId(), broadPhaseAABB, b->GetVelocity() * dt);
     }
 
     // --- 2. 存活检查 (Persistence) ---

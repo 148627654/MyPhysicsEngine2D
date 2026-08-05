@@ -9,8 +9,6 @@ enum class BodyType {
 	Dynamic
 };
 
-
-
 class Body
 {
 public:
@@ -44,6 +42,7 @@ public:
 		this->restitution = 0.5f;
 		this->friction = 0.2f;
 		this->m_sleepTimer = 0.0f;      // 计时器清零
+		this->m_isBullet = false;
 		updateAABB();
 	}
 	inline void ClearForce() { force.Clear(); }
@@ -93,6 +92,9 @@ public:
 	inline void setSleepTimer(float time) { m_sleepTimer = time; }
 	void SetType(BodyType type, float density = 1.0f);
 	void ForceSleep();
+	AABB GetSweptAABB(float dt)const;
+	void SetBullet(bool flag) { m_isBullet = flag; }
+	bool IsBullet() const { return m_isBullet; }
 private:
 	friend struct ContactEdge;
 	friend class World;
@@ -128,4 +130,6 @@ private:
 	bool m_isAwake;			//是否处于清醒状态。
 	bool m_isSleepAllowed;	//是否允许该物体休眠。
 	float m_sleepTimer;				//当前物体处于低能量状态的持续时间。
+
+	bool m_isBullet;		// 是否高速物体，需要连续碰撞检测
 };
