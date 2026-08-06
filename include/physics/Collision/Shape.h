@@ -23,4 +23,6 @@ public:
 	virtual AABB ComputeAABB(Vector2 pos , float angle) = 0;
 	virtual bool RayCast(RayCastOutput* output, RayCastInput& input,
 		const Vector2& position, float rotation) = 0;
+	// 获取形状的扫掠半径（中心到最远点的距离）
+	virtual float GetSweepRadius() const = 0;
 };

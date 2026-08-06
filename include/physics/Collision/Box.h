@@ -19,6 +19,8 @@ public:
 	float getHeigh()const { return height; }
 	float getHalfWidth()const { return width * 0.5f; }
 	float getHalfHeigh()const { return height * 0.5f; }
+	// 获取形状的扫掠半径（中心到最远点的距离）
+	float GetSweepRadius() const;
 private:
 	float width;
 	float height;

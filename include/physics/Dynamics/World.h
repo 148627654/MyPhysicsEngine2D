@@ -25,6 +25,7 @@ public:
 	inline const std::map<std::pair<Body*, Body*>, Contact*>& getContactMap() const {return m_contactMap;}
 	BroadPhase& GetBroadPhase() { return m_broadPhase; }
 	void WakeNeighbors(Body* body);
+	void UpdateTOI(Contact* c, float dt);
 private:
 	void AddContactToGraph(Contact* c);
 	void RemoveContactFromGraph(Contact* c);

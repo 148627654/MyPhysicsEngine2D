@@ -143,3 +143,35 @@ AABB Body::GetSweptAABB(float dt) const
 
 	return AABB::Combine(aabb1, aabb2);
 }
+
+Transform Body::GetTransform(float alpha, float dt)
+{
+    Transform tf;
+    // alpha = 0 对应 m_prevPosition (本帧开始)
+    // alpha = 1 对应 m_position (本帧结束)
+    tf.p = m_prevPosition + (position - m_prevPosition) * alpha;
+    tf.q = m_prevRotation + (rotation - m_prevRotation) * alpha;
+    return tf;
+}
+
+void Body::SavePrevState()
+{
+    m_prevPosition = position;
+    m_prevRotation = rotation;
+}
+
+void Body::SetTransform(const Vector2& position, float angle) {
+    // 1. 更新底层位姿数据
+    this->position = position;
+    this->rotation = angle;
+
+    // 2. 【核心】立即刷新该物体的 AABB
+    // 物理引擎的碰撞检测依赖 AABB，如果坐标变了 AABB 不变，
+    // 那么接下来的窄相检测（Narrowphase）依然会基于错误的位置。
+    this->updateAABB();
+}
+
+void Body::SetTransform(const Transform& tf) {
+    // 直接复用上面的逻辑
+    SetTransform(tf.p, tf.q);
+}

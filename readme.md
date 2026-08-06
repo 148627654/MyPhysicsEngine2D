@@ -91,6 +91,11 @@ MyPhysicsEngine2D/
   - **新功能**：引入 **Bullet Flag (子弹标记)**，支持对特定高速物体开启 CCD 模式。
   - **宽相联动**：重构 `World::Step` 同步逻辑，使 `BroadPhase` 能够识别出那些“本帧末尾未重叠但路径上发生碰撞”的物体对。
   - **数学防御**：引入预测位姿下的 `ComputeAABB`，确保高速旋转的长条物体不会在路径中漏检。
+- [x] **Day 12: 撞击时间计算与位姿插值 (Time of Impact)**
+  - **核心算法**：实现 **Conservative Advancement (保守进步量)** 算法，精准求解碰撞发生的比例 $\alpha \in [0, 1]$。
+  - **数学基础**：实现 `GetTransform(alpha)` 函数，支持在任意时间点对物体的平移和旋转进行线性插值。
+  - **几何增强**：构建 `CalculateDistance` 分发器，支持 Circle-Circle, Box-Circle, Box-Box 三种组合的有符号距离计算。
+  - **鲁棒性处理**：引入 `Settings::LINEAR_SLOP` 和 `EPSILON`，完美处理起始即重叠（Overlapped）的极端工况。
 ## 🚀 Day 01 进展：动态树基础架构 (Node Pool)
 
 ### 1. 技术核心：索引式内存池
@@ -575,5 +580,56 @@ $$K = \frac{1}{m_A} + \frac{1}{m_B} + \frac{(r_A \times n)^2}{I_A} + \frac{(r_B 
 ![项目截图](./readme.assets/v2_day11.gif)
 
 ---
+
+## 🚀 Day 12 进展：毫秒级的精确“时空定位”
+
+### 1. 技术核心：保守进步量算法 (Conservative Advancement)
+不同于盲目的二分法，CA 算法利用物体的几何距离和相对接近速度，通过“安全快进”的方式逼近撞击点：
+- **接近速度 (Closing Speed)**：不仅考虑线速度 $V_{linear}$，还通过 `GetSweepRadius` 引入了旋转产生的最大角速度贡献 $V_{angular} = |\omega| \cdot r$。这保证了哪怕是物体的最尖端，也不会在一次迭代中穿透对方。
+- **求根迭代**：通过循环不断缩小 $\alpha$ 的范围，直到距离达到毫米级的容差（Tolerance），从而锁定撞击发生的瞬间。
+
+### 2. 多形状距离解算器 (Signed Distance Solver)
+为了给 TOI 算法提供“眼睛”，我们实现了三套距离算法：
+1.  **圆-圆**：质心距离减半径之和。
+2.  **盒-圆**：利用局部坐标系转换寻找矩形上的最近点。
+3.  **盒-盒 (SAT 简化版)**：基于质心连线方向的投影间隙算法，在保证效率的同时提供了足够的迭代精度。
+
+### 3. 开发复盘：Day 12 遇到的极限挑战
+
+#### **问题 A：被离散解算器“弹飞”的子弹**
+- **现象**：子弹在接近墙壁时，扫掠盒数据突然跳变（Max X 从 1.5 变为 -0.78）。
+- **原因**：在测试 TOI 时开启了离散解算器，子弹在穿墙后的第一帧被施加了巨大的排斥力。
+- **解决**：在 CCD 调试阶段采用“幽灵移动”模式（手动 `SetPosition` 积分但不执行 `Solve`），确保轨迹的物理连续性以便观察 TOI 结果。
+
+#### **问题 B：睡眠机制与 CCD 的冲突**
+- **现象**：测试脚本运行后，子弹停在原地不动，扫掠盒毫无变化。
+- **根因**：Day 09 的睡眠机制将新创建的子弹误判为睡眠态。
+- **解决**：在创建子弹后显式调用 `setAwake(true)`，并确保 `Step` 逻辑能正确驱动无 Contact 的孤立物体。
+
+#### **问题 C：Overlapped 状态的漏报**
+- **现象**：高速物体在帧起始就已经穿透了，算法返回 Separated 或 Alpha = 1.0。
+- **解决**：`TOIInput`中的maxIterations没有初始化，调代码调了一下午
+#### **问题 D：Settings中的数据无法读取，C2039**
+- **现象**：Settings::XXX 无法读取。
+- **解决**：Settings中存在static constexpr float EPSILON = 1e-7f;Vector2也存在EPSILON，貌似好像也不是，关了重开一下就好了
+### 4. 如何验证
+运行 `tests/RunDay12Tests.cpp`：
+- ✅ **精确 Alpha 捕获**：在 $120.0\,m/s$ 的速度下，引擎成功在 Frame 1 捕获到撞击点 $\alpha = 0.7475$。
+- ✅ **全组合适配**：Circle-Circle, Box-Circle, Box-Box 三种实验均能精准定位碰撞瞬间。
+- ✅ **时间轴验证**：通过 $0.7475$ 的比例回溯，物体边缘恰好严丝合缝地贴在障碍物边缘。
+
+**Day 12 运行快照：**
+```text
+[INFO] >>> Starting TOI Test: Box-Box
+[INFO] [Box-Box] COLLISION DETECTED!
+[INFO]    Frame: 1
+[INFO]    Alpha (Time of Impact): 0.747500
+[INFO]    Intercepted at X: 0.000000 (Sub-frame precision confirmed)
+```
+![项目截图](./readme.assets/v2_day12.gif)
+
+---
+
 ## 💻 编译与运行
 - **环境**：Visual Studio 2019+ (C++11)
+

@@ -2,63 +2,57 @@
 #include "../Collision/Collision.h"
 #include "../Utils/Logger.h"
 #include "../../include/physics/Dynamics/Solver.h"
-
+#include "../Collision/TimeOfImpact.h"
 
 void World::Step(float dt) {
-    // --- 1. 同步坐标 (这一步必须最先做) ---
+    // --- 1. 备份与预测积分 ---
     for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f) continue;
+        b->SavePrevState(); // 记录 t0 (起始位置)
 
-        if (!b->IsAwake()) {
-            // 【补充：状态断言/强制归零】
-            // 如果物体是睡着的，它的速度必须是 0。
-            assert(b->GetVelocity().LengthSquared() == 0); 
-            // 或者保险起见直接强制设为 0。
-            b->velocity.Clear();
-            b->angularVelocity = 0.0f;
-            continue;
+        if (b->getInvMass() > 0.0f && b->IsAwake()) {
+            // A. 速度积分 (v = v + a*dt)
+            Vector2 accel = b->getForce() * b->getInvMass() + m_gravity * b->getGravityScale();
+            b->SetVelocity(b->GetVelocity() + accel * dt);
+
+            // B. 位置预测 (P1 = P0 + v*dt) -> 此时位置变成了本帧结束时的位置
+            b->SetPosition(b->GetPosition() + b->GetVelocity() * dt);
+            b->SetRotation(b->GetRotation() + b->getAngularVelocity() * dt);
+
+            b->ClearForce();
+            b->setTorque(0.0f);
         }
-
-        // A. 更新物体当前时刻的 Tight AABB
-        b->updateAABB();
-
-        // B. 计算同步到宽相树的 AABB
-        AABB broadPhaseAABB;
-        if (b->IsBullet()) {
-            // 如果是高速子弹，同步它本帧划过的整个轨迹盒
-            broadPhaseAABB = b->GetSweptAABB(dt);
-        }
-        else {
-            // 普通物体，同步它当前的盒子
-            broadPhaseAABB = b->GetAABB();
-        }
-
-        // C. 同步到 BroadPhase
-        m_broadPhase.MoveProxy(b->getProxyId(), broadPhaseAABB, b->GetVelocity() * dt);
     }
 
-    // --- 2. 存活检查 (Persistence) ---
-    // 只要 AABB 还重叠，Contact 就得活着！
+    // --- 2. 宽相更新 (基于预测后的 P1 位置) ---
+    for (Body* b : m_bodies) {
+        if (b->getInvMass() == 0.0f || !b->IsAwake()) continue;
+
+        b->updateAABB(); // 必须基于 P1 刷新 AABB
+        // 对于子弹，使用扫掠 AABB (涵盖 P0 到 P1 的轨迹)
+        AABB bpAABB = b->IsBullet() ? b->GetSweptAABB(dt) : b->GetAABB();
+        m_broadPhase.MoveProxy(b->getProxyId(), bpAABB, b->GetVelocity() * dt);
+    }
+
+    // --- 3. 碰撞维护与 TOI 计算 ---
+    // A. 存活检查
     for (auto it = m_contactMap.begin(); it != m_contactMap.end(); ) {
         Contact* c = it->second;
-
-        // 主动询问宽相：Fat AABB 是否还重合？
         if (m_broadPhase.TestOverlap(c->m_bodyA->getProxyId(), c->m_bodyB->getProxyId())) {
-            c->update(); // 执行窄相，刷新 IsTouching 状态
+            c->update();    // 离散窄相检测
+            UpdateTOI(c, dt); // 计算 [P0, P1] 轨迹上的撞击时间
             it++;
         }
         else {
-            // 只有宽相说分开了，才真正销毁
             RemoveContactFromGraph(c);
             delete c;
             it = m_contactMap.erase(it);
         }
     }
 
-    // --- 3. 发现新碰撞 ---
+    // B. 发现新碰撞
     m_broadPhase.UpdatePairs([&](void* uA, void* uB) {
-        Body* bodyA = static_cast<Body*>(uA);
-        Body* bodyB = static_cast<Body*>(uB);
+        Body* bodyA = (Body*)uA;
+        Body* bodyB = (Body*)uB;
         if (bodyA->getInvMass() == 0.0f && bodyB->getInvMass() == 0.0f) return;
         if (bodyA > bodyB) std::swap(bodyA, bodyB);
         auto key = std::make_pair(bodyA, bodyB);
@@ -69,13 +63,41 @@ void World::Step(float dt) {
         m_contactMap[key] = contact;
         AddContactToGraph(contact);
         contact->update();
+        UpdateTOI(contact, dt);
         });
 
-    // --- 4. 构建岛屿并解算 (核心) ---
-    // DFS 内部会重置它自己的 m_islandFlag，不需要在这里操心
+    // --- 4. CCD 拦截与回溯 (核心拦截) ---
+    // 我们需要找出这一帧中所有发生穿墙预兆的物体
+    for (auto const& [key, contact] : m_contactMap) {
+        // 如果 TOI 显著小于 1.0，说明在本帧结束前就会撞上
+        // 增加 0.001 的偏移防止由于浮点误差导致的“粘墙”现象
+        if (contact->m_toi < 0.999f && contact->m_toi > 0.001f) {
+
+            // 找到撞击瞬间的位姿 (插值)
+            Transform tfA = contact->m_bodyA->GetTransform(contact->m_toi, dt);
+            Transform tfB = contact->m_bodyB->GetTransform(contact->m_toi, dt);
+
+            // 拦截：强制把物体从“穿透点”拉回到“撞击点”
+            contact->m_bodyA->SetTransform(tfA);
+            contact->m_bodyB->SetTransform(tfB);
+
+            // 关键：位置变了，必须重新执行窄相，生成撞击点的流形 (Manifold)
+            // 这样接下来的 Solve 环节才能根据此时的法线计算反弹冲量
+            contact->update();
+
+            // 诊断日志
+            Logger::Info(">>> [CCD] Alpha " + std::to_string(contact->m_toi) +
+                " Intercepted at X: " + std::to_string(tfA.p.getX()));
+        }
+    }
+
+    // --- 5. 岛屿解算 ---
+    // 此时物体的状态：
+    // - 没撞上的：处于预测的 P1 位置。
+    // - 撞上的：被回退到了撞击点位置。
+    // BuildAndSolveIslands 内部的 Solve 必须已经去掉了再次积分的逻辑！
     BuildAndSolveIslands(dt);
 }
-
 void World::AddContactToGraph(Contact* c) {
     Body* bodyA = c->m_bodyA;
     Body* bodyB = c->m_bodyB;
@@ -269,5 +291,28 @@ void World::WakeNeighbors(Body* body)
         }
 
         ce = ce->next;
+    }
+}
+
+void World::UpdateTOI(Contact* c, float dt) {
+    if (!c->m_bodyA->IsBullet() && !c->m_bodyB->IsBullet()) return;
+    
+    TOIInput input;
+    input.bodyA = c->m_bodyA;
+    input.bodyB = c->m_bodyB;
+    input.dt = dt;
+    input.tolerance = Settings::LINEAR_SLOP;
+
+    TOIOutput output = TimeOfImpact::Solve(input);
+
+    // 【核心修正】：只要判定为 Hit 或 Overlapped，都要记录 alpha
+    if (output.state == TOIOutput::Hit || output.state == TOIOutput::Overlapped) {
+        c->m_toi = output.alpha;
+        Logger::Info(">>> [TOI SUCCESS] Alpha: " + std::to_string(c->m_toi));
+    }
+    else {
+        // --- 增加这行诊断日志 ---
+        //Logger::Info(">>> [TOI FAILED] State: " + std::to_string(output.state));
+        c->m_toi = 1.0f;
     }
 }

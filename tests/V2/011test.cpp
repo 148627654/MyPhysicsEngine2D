@@ -55,7 +55,7 @@ void TestBulletTunneling() {
     Logger::Info("Check 'output/v2_011.csv' for trajectory analysis.");
 }
 
-int main() {
-    TestBulletTunneling();
-    return 0;
-}
+//int main() {
+//    TestBulletTunneling();
+//    return 0;
+//}

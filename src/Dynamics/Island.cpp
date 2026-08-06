@@ -73,14 +73,6 @@ void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
         }
     }
 
-    // --- 3. 位置积分 ---
-    for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f) continue;
-
-        b->SetPosition(b->GetPosition() + b->GetVelocity() * dt);
-        b->SetRotation(b->GetRotation() + b->getAngularVelocity() * dt);
-    }
-
     // --- 4. 位置修正 (Position Constraints) ---
     for (int i = 0; i < step.positionIterations; ++i) {
         for (Contact* c : m_contacts) {

@@ -1,6 +1,7 @@
 #pragma once // 记得加上这个，防止重复包含
 #include "../Common/Vector2.h"
 #include "../Collision/Shape.h"
+#include "../Common/Setting.h"
 //#include "../Collision/Manifold.h"
 class Contact;
 struct ContactEdge;
@@ -9,40 +10,56 @@ enum class BodyType {
 	Dynamic
 };
 
+struct Transform {
+	Vector2 p;      // 位置 (Position)
+	float q;        // 旋转弧度 (Angle/Rotation) - 也可以是旋转矩阵，2D 简单起见用 float
+
+	Transform() : p(0, 0), q(0) {}
+	Transform(Vector2 pos, float angle) : p(pos), q(angle) {}
+};
+
 class Body
 {
 public:
-	Body(Shape* s, float x = 0.0, float y = 0.0, float density = 1.0f)
-		: shape(s), position(Vector2(x, y)), rotation(0.0f),
-		velocity(Vector2(0, 0)), angularVelocity(0.0f),
-		force(Vector2(0, 0)), torque(0.0f), gravityScale(1.0f)
+	Body(Shape* s, float x, float y, float density)
+		: shape(s),
+		position(Vector2(x, y)),
+		rotation(0.0f),
+		velocity(Vector2(0, 0)),
+		angularVelocity(0.0f),
+		force(Vector2(0, 0)),
+		torque(0.0f),
+		gravityScale(1.0f),
+		restitution(0.5f),
+		friction(0.2f),
+		m_proxyId(-1),
+		m_contactList(nullptr),
+		m_islandFlag(false),
+		m_sleepTimer(0.0f),
+		m_isBullet(false),
+		// --- CCD 关键初始化 ---
+		m_prevPosition(Vector2(x, y)), // 初始位置与上一帧位置同步
+		m_prevRotation(0.0f)           // 初始角度与上一帧角度同步
 	{
 		if (density > 0.0f && shape != nullptr) {
-			// --- 动态物体逻辑 ---
 			MassData data = shape->ComputeMass(density);
 			this->mass = data.mass;
 			this->invMass = 1.0f / mass;
 			this->inertia = data.inertia;
 			this->invInertia = 1.0f / inertia;
-
-			m_isAwake = true;           // 动态物体初始是醒着的
-			m_isSleepAllowed = true;    // 允许休眠
+			m_isAwake = true;
+			m_isSleepAllowed = true;
 		}
 		else {
-			// --- 静态物体逻辑 ---
 			this->mass = 0.0f;
 			this->invMass = 0.0f;
 			this->inertia = 0.0f;
 			this->invInertia = 0.0f;
-
-			m_isAwake = false;          // 静态物体永远“不醒”（不主动触发解算）
-			m_isSleepAllowed = false;   // 静态物体不需要休眠逻辑
+			m_isAwake = false;
+			m_isSleepAllowed = false;
 		}
 
-		this->restitution = 0.5f;
-		this->friction = 0.2f;
-		this->m_sleepTimer = 0.0f;      // 计时器清零
-		this->m_isBullet = false;
+		// 初始化 AABB
 		updateAABB();
 	}
 	inline void ClearForce() { force.Clear(); }
@@ -95,6 +112,10 @@ public:
 	AABB GetSweptAABB(float dt)const;
 	void SetBullet(bool flag) { m_isBullet = flag; }
 	bool IsBullet() const { return m_isBullet; }
+	Transform GetTransform(float alpha, float dt=Settings::DT);
+	void SetTransform(const Vector2& position, float angle);
+	void SetTransform(const Transform& tf);
+	void SavePrevState();
 private:
 	friend struct ContactEdge;
 	friend class World;
@@ -132,4 +153,7 @@ private:
 	float m_sleepTimer;				//当前物体处于低能量状态的持续时间。
 
 	bool m_isBullet;		// 是否高速物体，需要连续碰撞检测
+
+	Vector2 m_prevPosition;
+	float m_prevRotation;
 };

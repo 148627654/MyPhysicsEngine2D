@@ -59,5 +59,4 @@ public:
 private:
 	float x;
 	float y;
-	static constexpr  float EPSILON = 0.0001f;
 };

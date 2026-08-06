@@ -1,5 +1,5 @@
 #include "Vector2.h"
-
+#include "../Common/Setting.h"
 
 Vector2 Vector2::operator+(const Vector2& val)
 {
@@ -69,7 +69,7 @@ Vector2 Vector2::operator-() const
 Vector2 Vector2::Normalize() const
 {
 	float len = Length();
-	if (len > Vector2::EPSILON) {
+	if (len > Settings::EPSILON) {
 		float invLen = 1.0f / len;
 		return Vector2(x * invLen, y * invLen);
 	}
@@ -130,7 +130,7 @@ Vector2 operator*(float num, const Vector2& vec)
 
 bool operator==(const Vector2& a, const Vector2& b)
 {
-	if ((std::abs(a.x - b.x) < Vector2::EPSILON) && (std::abs(a.y - b.y) < Vector2::EPSILON))
+	if ((std::abs(a.x - b.x) < Settings::EPSILON) && (std::abs(a.y - b.y) < Settings::EPSILON))
 		return true;
 	else
 		return false;

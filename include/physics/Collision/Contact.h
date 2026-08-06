@@ -29,6 +29,7 @@ public:
     Body* m_bodyB;
 
     bool m_islandFlag = false;
+    float m_toi=1.0f;
 private:
 	Manifold m_manifold;
 	bool m_touching;

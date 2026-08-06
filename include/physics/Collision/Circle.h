@@ -15,6 +15,7 @@ public:
 	float getR()const { return radius; }
 	bool RayCast(RayCastOutput* output, RayCastInput& input,
 		const Vector2& position, float rotation);
+	float GetSweepRadius() const { return getR(); }
 private:
 	float radius;
 };

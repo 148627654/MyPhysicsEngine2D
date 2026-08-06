@@ -135,3 +135,10 @@ bool Box::RayCast(RayCastOutput* output, RayCastInput& input,
 
     return false;
 }
+
+float Box::GetSweepRadius() const
+{
+    float hw = width * 0.5f;
+    float hh = height * 0.5f;
+    return std::sqrt(hw * hw + hh * hh);
+}
