@@ -13,15 +13,10 @@ struct TOIInput {
 
 // 描述计算结果
 struct TOIOutput {
-    enum State {
-        Unknown,
-        Hit,    // 确实撞上了
-        Separated, // 这一帧内绝对没撞上
-        Overlapped // 一开始（alpha=0时）就重叠了
-    };
-
+    enum State { Unknown, Hit, Separated, Overlapped };
     State state;
-    float alpha; // 最终算出的时间比例 [0, 1]
+    float alpha;
+    Vector2 normal; // <--- 新增：存储撞击那一刻的法线
 };
 
 class TimeOfImpact {

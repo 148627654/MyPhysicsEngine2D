@@ -46,21 +46,6 @@ void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
         }
         return;
     }
-    // --- 1. 速度积分 ---
-    for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f) continue;
-
-        // v = v + (f/m + g) * dt
-        Vector2 acceleration = b->getForce() * b->getInvMass() + gravity * b->getGravityScale();
-        b->SetVelocity(b->GetVelocity() + acceleration * dt);
-
-        // w = w + (torque/I) * dt
-        float angularAcc = b->getTorque() * b->getInvInertia();
-        b->setAngularVelocity(b->getAngularVelocity() + angularAcc * dt);
-
-        b->ClearForce();
-        b->setTorque(0.0f);
-    }
     //PreSolve
     for (Contact* c : m_contacts) {
         c->PreSolve(step.dt);

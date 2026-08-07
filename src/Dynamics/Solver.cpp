@@ -75,16 +75,30 @@ $$\text{correction} = \frac{\max(\text{penetration} - \text{slop}, 0)}
 */
 void PositionalCorrection(Manifold& m)
 {
-    float slot = ::Settings::PENETRATION_ALLOWANCE;
-    float bias = ::Settings::BIAS;
+    float slot = Settings::PENETRATION_ALLOWANCE;
+    float bias = Settings::BIAS;
+    // 【新增】：单次迭代的最大修正上限 (建议 0.05m ~ 0.1m)
+    static constexpr float MAX_CORRECTION = 0.1f;
 
-    float suminvmass = (m.bodyA)->getInvMass() + (m.bodyB)->getInvMass();
-    if (suminvmass < 0.0001f) return;
-    float correction = std::max(m.penetration - slot, 0.0f) / suminvmass * bias;
+    float suminvmass = m.bodyA->getInvMass() + m.bodyB->getInvMass();
+    if (suminvmass < Settings::EPSILON) return;
 
-    Vector2 posA = m.bodyA->GetPosition() - correction * ((m.bodyA)->getInvMass()) * m.normal;
-    m.bodyA->SetPosition(posA);
+    // 计算修正量
+    float correction_magnitude = std::max(m.penetration - slot, 0.0f) / suminvmass * bias;
 
-    Vector2 posB = m.bodyB->GetPosition() + correction * ((m.bodyB)->getInvMass()) * m.normal;
-    m.bodyB->SetPosition(posB);
+    // 【核心修复】：限幅，防止物体被“炸”飞或瞬移过墙
+    correction_magnitude = std::min(correction_magnitude, MAX_CORRECTION);
+
+    Vector2 correction_vector = m.normal * correction_magnitude;
+
+    // --- 【核心修复】：使用直接修改 position，避免触发 setAwake ---
+    if (m.bodyA->getInvMass() > 0.0f) {
+        m.bodyA->SetPosition(m.bodyA->GetPosition() - correction_vector * m.bodyA->getInvMass());
+    }
+
+    if (m.bodyB->getInvMass() > 0.0f) {
+        m.bodyB->SetPosition(m.bodyB->GetPosition() - correction_vector * m.bodyB->getInvMass());
+
+    }
+
 }

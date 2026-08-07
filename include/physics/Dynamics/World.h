@@ -29,6 +29,11 @@ public:
 private:
 	void AddContactToGraph(Contact* c);
 	void RemoveContactFromGraph(Contact* c);
+	void SolveTOI(Contact* contact, float dt);
+	void UpdateAllContactsAndTOI(float dt);
+	void UpdateNeighborsTOI(Body* b, float dt);
+	void HandleNewCollision(void* uA, void* uB, float dt);
+	void UpdateBroadPhase(float dt);
 	std::vector<Body*> m_bodies;
 	Vector2 m_gravity;
 	std::vector<Manifold> m_manifolds;

@@ -1,83 +1,82 @@
 #include "TimeOfImpact.h"
 #include "../../include/physics/Common/Setting.h"
 #include <Logger.h>
-TOIOutput TimeOfImpact::Solve(const TOIInput& input)
-{
-	//printf("--- DEBUG: TOI Solve Started ---\n");
+TOIOutput TimeOfImpact::Solve(const TOIInput& input) {
 	TOIOutput output;
 	output.alpha = 1.0f;
 	output.state = TOIOutput::Separated;
+	output.normal=(0, 0);
 
 	float alpha = 0.0f;
-	const float targetDistance = input.tolerance; // 比如 0.005
-	const float tolerance = 0.001f; // 迭代容差
+	const float targetDistance = input.tolerance; // 目标间距
 
-	for (int iter = 0; iter < input.maxIterations; ++iter)
-	{
-		//printf("--- iter %d---\n", iter);
-		// 1. 获取当前 alpha 时的位姿并计算距离
+	for (int iter = 0; iter < input.maxIterations; ++iter) {
 		Vector2 normal;
 		float distance = CalculateDistance(input, alpha, normal);
-		// 使用 std::endl 强制刷新缓冲区，或者直接用 printf
-		//printf("--- distance %f---\n",distance);
-		fflush(stdout);
-		// --- 2. 初始重叠检查 ---
-		if (iter == 0) {
-			if (distance <= Settings::LINEAR_SLOP) { // 如果初始距离小于一个极小值
-				output.state = TOIOutput::Overlapped;
-				output.alpha = 0.0f;
-				return output;
-			}
-		}
 
-		// --- 3. 判定是否达到撞击条件 ---
-		// 如果距离已经在 targetDistance 的极小误差范围内，直接返回成功
-		if (std::abs(distance - targetDistance) < tolerance) {
-			output.state = TOIOutput::Hit;
-			output.alpha = alpha;
+		// 1. 初始重叠检查 (只有穿深超过 SLOP 才报 Overlapped)
+		if (iter == 0 && distance < -Settings::LINEAR_SLOP) {
+			output.state = TOIOutput::Overlapped;
+			output.alpha = 0.0f;
+			output.normal = normal;
 			return output;
 		}
 
-		// --- 4. 计算接近速度 ---
+		// 2. 判定是否达到撞击条件 (满足容差范围)
+		if (std::abs(distance - targetDistance) < 0.0001f) {
+			output.state = TOIOutput::Hit;
+			output.alpha = alpha;
+			output.normal = normal;
+			return output;
+		}
+
+		// 3. 计算相对速度
 		Vector2 vA = input.bodyA->GetVelocity();
 		Vector2 vB = input.bodyB->GetVelocity();
-		// 如果考虑旋转，使用保守估计（增加步进安全性）
-		float maxAngularVel = std::abs(input.bodyA->getAngularVelocity()) * input.bodyA->GetShape()->GetSweepRadius() +
-			std::abs(input.bodyB->getAngularVelocity()) * input.bodyB->GetShape()->GetSweepRadius();
 
+		// 线性接近速度 (点积越大，接近越快)
 		float linearComponent = (vA - vB).Dot(normal);
-		float closingSpeed = linearComponent + maxAngularVel;
 
-		// --- 5. 步进 Alpha ---
-		if (closingSpeed <= 0.0f) {
+		// 如果线性分量已经在远离，直接判定为安全
+		if (linearComponent <= 0.0001f) {
 			output.state = TOIOutput::Separated;
 			output.alpha = 1.0f;
 			return output;
 		}
 
-		// 核心公式：我们想要找到距离刚好等于 targetDistance 的时间点
-		float alpha_step = (distance - targetDistance) / (closingSpeed * input.dt);
+		// 旋转产生的保险速度
+		float maxAngularVel = std::abs(input.bodyA->getAngularVelocity()) * input.bodyA->GetShape()->GetSweepRadius() +
+			std::abs(input.bodyB->getAngularVelocity()) * input.bodyB->GetShape()->GetSweepRadius();
 
-		// 关键修复：如果 alpha_step 非常小，说明我们已经非常接近撞击点了
-		if (alpha_step < 0.0001f && iter > 0) {
+		float closingSpeed = linearComponent + maxAngularVel;
+
+		// 4. 计算步进
+		// alpha_step = 剩余距离 / 全速。确保分子非负
+		float distance_to_travel = std::max(0.0f, distance - targetDistance);
+		float alpha_step = distance_to_travel / (closingSpeed * input.dt);
+
+		// 如果步进极小，说明已经收敛到撞击面
+		if (alpha_step < 0.00001f && iter > 0) {
 			output.state = TOIOutput::Hit;
 			output.alpha = alpha;
+			output.normal = normal;
 			return output;
 		}
 
 		alpha += alpha_step;
 
-		// --- 6. 越界检查 ---
-		if (alpha > 1.0f || alpha < 0.0f) {
+		// 5. 退出条件检查
+		if (alpha > 1.0f) {
 			output.state = TOIOutput::Separated;
 			output.alpha = 1.0f;
 			return output;
 		}
 	}
 
-	// 如果迭代次数用完，通常是因为 alpha_step 在 target 附近震荡
+	// 达到最大迭代次数，返回当前结果
 	output.state = TOIOutput::Hit;
 	output.alpha = alpha;
+	CalculateDistance(input, alpha, output.normal); // 获取最终位置的法线
 	return output;
 }
 
