@@ -19,7 +19,14 @@ void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
         // 如果该物体禁止休眠，或者当前是清醒的且动能大
         float linearVelocitySq = b->GetVelocity().LengthSquared();
         float angularVelocitySq = b->getAngularVelocity() * b->getAngularVelocity();
-
+        if (linearVelocitySq < Settings::LinearSleepThreshold * 0.5f) {
+            b->SetVelocity(0);
+            linearVelocitySq = 0.0f;
+        }
+        if (angularVelocitySq < Settings::AngularSleepThreshold * 0.5f) {
+            b->setAngularVelocity(0.0f);
+            angularVelocitySq = 0.0f;
+        }
         if (!b->IsSleepAllow() ||
             linearVelocitySq > Settings::LinearSleepThreshold ||
             angularVelocitySq > Settings::AngularSleepThreshold)

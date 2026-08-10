@@ -3,20 +3,35 @@
 #include "../Utils/Logger.h"
 #include "../../include/physics/Dynamics/Solver.h"
 #include "../Collision/TimeOfImpact.h"
+#include "../../include/physics/Utils/Profiler.h"
 void World::Step(float dt) {
-    // 1. 速度积分与位置预测 (P0 -> P1)
-    for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f || !b->IsAwake()) continue;
-        Vector2 accel = b->getForce() * b->getInvMass() + m_gravity * b->getGravityScale();
-        b->velocity += accel * dt;
-        b->angularVelocity += b->torque * b->getInvInertia() * dt;
+    m_profiler.BeginFrame();
+    // --- 统计计数器 ---
+    int awakeCount = 0;
+    for (Body* b : m_bodies) if (b->IsAwake()) awakeCount++;
+    m_profiler.SetCounter("Total Bodies", (int)m_bodies.size());
+    m_profiler.SetCounter("Awake Bodies", awakeCount);
+    m_profiler.SetCounter("Active Contacts", (int)m_contactMap.size());
 
-        b->SavePrevState(); // 记录当前位置为 P0
-        b->position += b->velocity * dt; // 预测 P1
-        b->rotation += b->angularVelocity * dt;
+    // 开始记录整个 Step 的耗时
+    m_profiler.Start("Step Total");
+    {
+        ScopedTimer timer(m_profiler, "1. Integration");
+        // 1. 速度积分与位置预测 (P0 -> P1)
+        for (Body* b : m_bodies) {
+            if (b->getInvMass() == 0.0f || !b->IsAwake()) continue;
+            Vector2 accel = b->getForce() * b->getInvMass() + m_gravity * b->getGravityScale();
+            b->velocity += accel * dt;
+            b->angularVelocity += b->torque * b->getInvInertia() * dt;
 
-        b->ClearForce(); b->torque = 0.0f;
+            b->SavePrevState(); // 记录当前位置为 P0
+            b->position += b->velocity * dt; // 预测 P1
+            b->rotation += b->angularVelocity * dt;
+
+            b->ClearForce(); b->torque = 0.0f;
+        }
     }
+    
 
     // 2. 定义局部宽相同步函数
     auto syncBP = [&](float currentDt) {
@@ -28,64 +43,79 @@ void World::Step(float dt) {
         }
         };
 
-    // 3. 初始同步与 TOI 收集
-    syncBP(dt);
-    UpdateAllContactsAndTOI(dt);
-
-    // --- 4. [CCD 核心迭代] ---
-    float remainingDt = dt;
-    for (int subStep = 0; subStep < 4; ++subStep) {
-        Contact* earliest = nullptr;
-        TOIOutput bestOutput;
-        float minAlpha = 1.0f;
-
-        for (auto const& pair : m_contactMap) {
-            Contact* c = pair.second;
-            if (!c->m_bodyA->IsBullet() && !c->m_bodyB->IsBullet()) continue;
-            // 重新算 TOI，确保使用当前缩短后的 remainingDt
-            TOIInput input;
-            input.bodyA = c->m_bodyA; input.bodyB = c->m_bodyB;
-            input.dt = remainingDt; input.tolerance = 0.001f;
-            TOIOutput out = TimeOfImpact::Solve(input);
-            if (out.state == TOIOutput::Hit && out.alpha < minAlpha) {
-                minAlpha = out.alpha; earliest = c; bestOutput = out;
-            }
-        }
-
-        if (earliest && minAlpha < 1.0f) {
-            Body* bA = earliest->m_bodyA; Body* bB = earliest->m_bodyB;
-
-            // A. 回溯到撞击瞬间
-            float safeAlpha = std::max(0.0f, minAlpha - 0.01f);
-            bA->SetTransform(bA->GetTransform(safeAlpha, remainingDt));
-            bB->SetTransform(bB->GetTransform(safeAlpha, remainingDt));
-
-            // B. 使用 TOI 提供的法线强制反弹 (VN 计算是关键)
-            Vector2 n = bestOutput.normal; // TOI 传回的法线
-            Vector2 vRel = bA->velocity - bB->velocity;
-            float vn = vRel.Dot(n);
-
-            if (vn > 0.0f) { // 如果正在接近墙 (vA->右, n->右, 点积为正)
-                float e = 0.5f;
-                float j = (1.0f + e) * vn / (bA->getInvMass() + bB->getInvMass());
-                bA->velocity -= n * (j * bA->getInvMass());
-                bB->velocity += n * (j * bB->getInvMass());
-                Logger::Info(">>> [CCD] BOUNCE! New VelX: " + std::to_string(bA->velocity.getX()));
-            }
-
-            // C. 【关键】：同步 P0 并消耗时间
-            for (Body* b : m_bodies) b->SavePrevState();
-            remainingDt *= (1.0f - minAlpha);
-
-            // D. 为下一轮子步刷新宽相和 TOI
-            syncBP(remainingDt);
-            UpdateAllContactsAndTOI(remainingDt);
-        }
-        else break;
+    {
+        ScopedTimer timer(m_profiler, "2. BroadPhase");
+        // 3. 初始同步与 TOI 收集
+        syncBP(dt);
+        UpdateAllContactsAndTOI(dt);
     }
+    
+    {
+        ScopedTimer timer(m_profiler, "3. CCD");
+        // --- 4. [CCD 核心迭代] ---
+        float remainingDt = dt;
+        for (int subStep = 0; subStep < 4; ++subStep) {
+            Contact* earliest = nullptr;
+            TOIOutput bestOutput;
+            float minAlpha = 1.0f;
 
-    // 5. 最后执行离散解算（处理普通碰撞和堆叠）
-    BuildAndSolveIslands(dt);
+            for (auto const& pair : m_contactMap) {
+                Contact* c = pair.second;
+                if (!c->m_bodyA->IsBullet() && !c->m_bodyB->IsBullet()) continue;
+                // 重新算 TOI，确保使用当前缩短后的 remainingDt
+                TOIInput input;
+                input.bodyA = c->m_bodyA; input.bodyB = c->m_bodyB;
+                input.dt = remainingDt; input.tolerance = 0.001f;
+                TOIOutput out = TimeOfImpact::Solve(input);
+                if (out.state == TOIOutput::Hit && out.alpha < minAlpha) {
+                    minAlpha = out.alpha; earliest = c; bestOutput = out;
+                }
+            }
+
+            if (earliest && minAlpha < 1.0f) {
+                Body* bA = earliest->m_bodyA; Body* bB = earliest->m_bodyB;
+
+                // A. 回溯到撞击瞬间
+                float safeAlpha = std::max(0.0f, minAlpha - 0.01f);
+                bA->SetTransform(bA->GetTransform(safeAlpha, remainingDt));
+                bB->SetTransform(bB->GetTransform(safeAlpha, remainingDt));
+
+                // B. 使用 TOI 提供的法线强制反弹 (VN 计算是关键)
+                Vector2 n = bestOutput.normal; // TOI 传回的法线
+                Vector2 vRel = bA->velocity - bB->velocity;
+                float vn = vRel.Dot(n);
+
+                if (vn > 0.0f) { // 如果正在接近墙 (vA->右, n->右, 点积为正)
+                    float e = 0.5f;
+                    float j = (1.0f + e) * vn / (bA->getInvMass() + bB->getInvMass());
+                    bA->velocity -= n * (j * bA->getInvMass());
+                    bB->velocity += n * (j * bB->getInvMass());
+                    //Logger::Info(">>> [CCD] BOUNCE! New VelX: " + std::to_string(bA->velocity.getX()));
+                }
+
+
+                // C. 【关键】：同步 P0 并消耗时间
+                for (Body* b : m_bodies) b->SavePrevState();
+                remainingDt *= (1.0f - minAlpha);
+
+                // D. 为下一轮子步刷新宽相和 TOI
+                syncBP(remainingDt);
+                UpdateAllContactsAndTOI(remainingDt);
+            }
+            else break;
+        }
+    }
+    
+    {
+        ScopedTimer timer(m_profiler, "4. Island Solver");
+        // 5. 最后执行离散解算（处理普通碰撞和堆叠）
+        BuildAndSolveIslands(dt);
+    }
+    // 结束记录整个 Step
+    m_profiler.Stop("Step Total");
+
+    // [帧结束] 计算本帧平均值
+    m_profiler.EndFrame();
 }
 
 void World::AddContactToGraph(Contact* c) {
@@ -192,7 +222,7 @@ void World::BuildAndSolveIslands(float dt) {
     for (Body* b : m_bodies) b->m_islandFlag = false;
     for (auto& pair : m_contactMap) pair.second->m_islandFlag = false;
 
-    TimeStep step;
+    TimeStep step{};
     step.dt = dt;
     step.velocityIterations = 8;
     step.positionIterations = 3;
@@ -330,7 +360,7 @@ void World::UpdateTOI(Contact* c, float dt) {
     // 【核心修正】：只要判定为 Hit 或 Overlapped，都要记录 alpha
     if (output.state == TOIOutput::Hit || output.state == TOIOutput::Overlapped) {
         c->m_toi = output.alpha;
-        Logger::Info(">>> [TOI SUCCESS] Alpha: " + std::to_string(c->m_toi));
+        //Logger::Info(">>> [TOI SUCCESS] Alpha: " + std::to_string(c->m_toi));
     }
     else {
         // --- 增加这行诊断日志 ---

@@ -21,6 +21,7 @@ void ImpulseSolver(Manifold& m) {
     // 摩擦系数
     float mu = std::sqrt(A->getFriction() * B->getFriction());
 
+
     for (int i = 0; i < m.contactCount; ++i) {
         // --- 1. 计算当前接触点的相对速度 ---
         // 注意：使用 PreSolve 缓存的 rA[i] 和 rB[i]

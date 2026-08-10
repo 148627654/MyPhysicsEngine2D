@@ -8,6 +8,7 @@
 #include <map>
 #include "../Collision/Contact.h"
 #include "Island.h"
+#include "../Utils/Profiler.h"
 class World
 {
 public:
@@ -26,6 +27,7 @@ public:
 	BroadPhase& GetBroadPhase() { return m_broadPhase; }
 	void WakeNeighbors(Body* body);
 	void UpdateTOI(Contact* c, float dt);
+	Profiler& GetProfiler() { return m_profiler; }
 private:
 	void AddContactToGraph(Contact* c);
 	void RemoveContactFromGraph(Contact* c);
@@ -39,4 +41,5 @@ private:
 	std::vector<Manifold> m_manifolds;
 	BroadPhase m_broadPhase; // 宽相管理系统
 	std::map<std::pair<Body*, Body*>, Contact*> m_contactMap;
+	Profiler m_profiler;
 };

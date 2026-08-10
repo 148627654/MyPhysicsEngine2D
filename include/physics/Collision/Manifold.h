@@ -7,11 +7,12 @@ struct Manifold
 {
 public:
 	Manifold(Body* a, Body* b)
-		: bodyA(a), bodyB(b), normal(0, 0), penetration(0), contactCount(0) {
+		: bodyA(a), bodyB(b), normal(0, 0), penetration(0), contactCount(0){
 		impulseN[0] = impulseN[1] = 0.0f;
 		impulseT[0] = impulseT[1] = 0.0f;
 		massNormal[0] = massNormal[1] = 0.0f;
 		massTangent[0] = massTangent[1] = 0.0f;
+		bias[0] = bias[1] = 0.0f;
 	}
 	Body* bodyA;					//参与碰撞的第一个物体
 	Body* bodyB;					//参与碰撞的第二个物体
@@ -28,4 +29,5 @@ public:
 	float massTangent[2]; // 切向有效质量的倒数
 	Vector2 rA[2];        // 质心到接触点的向量 (Body A)
 	Vector2 rB[2];        // 质心到接触点的向量 (Body B)
+	float bias[2]; // 每一时刻的弹力偏置
 };
