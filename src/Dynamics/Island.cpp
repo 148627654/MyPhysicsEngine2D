@@ -19,11 +19,19 @@ void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
         // 如果该物体禁止休眠，或者当前是清醒的且动能大
         float linearVelocitySq = b->GetVelocity().LengthSquared();
         float angularVelocitySq = b->getAngularVelocity() * b->getAngularVelocity();
-        if (linearVelocitySq < Settings::LinearSleepThreshold * 0.5f) {
+
+        // 【修复】仅当存在实体接触（非触发器）时才允许速度归零。
+        // 否则自由落体/抛射体在初始低速阶段每帧被清零，永远无法加速（从静止下落不动的 bug）
+        bool hasSolidContact = false;
+        for (ContactEdge* ce = b->getContactList(); ce != nullptr; ce = ce->next) {
+            if (!ce->contact->IsTrigger()) { hasSolidContact = true; break; }
+        }
+
+        if (hasSolidContact && linearVelocitySq < Settings::LinearSleepThreshold * 0.5f) {
             b->SetVelocity(0);
             linearVelocitySq = 0.0f;
         }
-        if (angularVelocitySq < Settings::AngularSleepThreshold * 0.5f) {
+        if (hasSolidContact && angularVelocitySq < Settings::AngularSleepThreshold * 0.5f) {
             b->setAngularVelocity(0.0f);
             angularVelocitySq = 0.0f;
         }
@@ -55,12 +63,14 @@ void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
     }
     //PreSolve
     for (Contact* c : m_contacts) {
+        if (c->IsTrigger()) continue; // 触发器不参与预热冲量
         c->PreSolve(step.dt);
     }
 
     // --- 2. 冲量解算 (Velocity Constraints) ---
     for (int i = 0; i < step.velocityIterations; ++i) {
         for (Contact* c : m_contacts) {
+            if (c->IsTrigger()) continue; // 触发器不产生冲量
             ImpulseSolver(c->GetManifold());
         }
     }
@@ -68,6 +78,7 @@ void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
     // --- 4. 位置修正 (Position Constraints) ---
     for (int i = 0; i < step.positionIterations; ++i) {
         for (Contact* c : m_contacts) {
+            if (c->IsTrigger()) continue; // 触发器不做位置修正
             PositionalCorrection(c->GetManifold());
         }
     }

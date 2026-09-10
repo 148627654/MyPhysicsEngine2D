@@ -30,8 +30,6 @@ public:
 		force(Vector2(0, 0)),
 		torque(0.0f),
 		gravityScale(1.0f),
-		restitution(0.5f),
-		friction(0.2f),
 		m_proxyId(-1),
 		m_contactList(nullptr),
 		m_islandFlag(false),
@@ -41,6 +39,9 @@ public:
 		m_prevPosition(Vector2(x, y)), // 初始位置与上一帧位置同步
 		m_prevRotation(0.0f)           // 初始角度与上一帧角度同步
 	{
+		// density 以 Body 构造参数为准，写回材质作为唯一数据源
+		if (shape != nullptr) shape->material.density = density;
+
 		if (density > 0.0f && shape != nullptr) {
 			MassData data = shape->ComputeMass(density);
 			this->mass = data.mass;
@@ -68,6 +69,8 @@ public:
 	// 方便外部（如日志系统）读取数据
 	void SetPosition(float x, float y);
 	void SetPosition(const Vector2& v);
+	// 位置修正专用：静默修改位置（不唤醒、不重置睡眠计时），供 Solver 的 PositionalCorrection 使用
+	void SetPositionQuiet(const Vector2& v);
 	Vector2 GetPosition() const { return position; }
 	Vector2 GetVelocity() const { return velocity; }
 	Shape* GetShape()const { return shape; };
@@ -80,8 +83,11 @@ public:
 	inline float getInvInertia( )const { return invInertia; }
 	//绑定形状并自动计算质量属性
 	void SetShape(Shape* s, float density);
-	inline float getRestitution( )const { return restitution; }
-	inline void setRestitution(float e) { restitution = e; }
+	// 重新根据 shape->material.density 计算质量属性（运行时改材质密度后调用）
+	void UpdateMassData();
+	// --- 材质属性：存储在 Shape::material 中，这里仅为兼容旧调用点做透传 ---
+	inline float getRestitution( )const { return shape ? shape->material.restitution : 0.0f; }
+	inline void setRestitution(float e) { if (shape) shape->material.restitution = e; }
 	inline float getInvMass( )const { return invMass; }
 	//转矩累加
 	float addTorque(float t) { return torque += t; }
@@ -90,8 +96,8 @@ public:
 	void updateAABB( );
 	void ApplyImpulse(Vector2 impulse);
 	void ApplyImpulse(const Vector2& impulse , const Vector2& contactVector);
-	inline float getFriction( ) const { return friction; }
-	inline void setFriction(float f) { friction = f; }
+	inline float getFriction( ) const { return shape ? shape->material.dynamicFriction : 0.0f; }
+	inline void setFriction(float f) { if (shape) shape->material.dynamicFriction = f; }
 	inline int32_t getProxyId() const { return m_proxyId; }
 	inline void setProxyId(int32_t id) { m_proxyId = id; }
 	ContactEdge* getContactList() { return m_contactList; }
@@ -139,10 +145,6 @@ private:
 
 	AABB worldAABB;
 
-	//冲量 牛顿恢复定律
-	float restitution;
-
-	float friction;    // 摩擦系数，建议范围 0.0 ~ 1.0 \mu
 	int32_t m_proxyId = -1; // 默认 -1 代表还没进树
 
 	ContactEdge* m_contactList = nullptr;

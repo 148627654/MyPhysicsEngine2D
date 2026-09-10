@@ -18,8 +18,10 @@ void ImpulseSolver(Manifold& m) {
     float invInertiaA = A->getInvInertia();
     float invInertiaB = B->getInvInertia();
 
-    // 摩擦系数
-    float mu = std::sqrt(A->getFriction() * B->getFriction());
+    // 摩擦系数：按材质混合规则合成 (默认 Multiply = sqrt(a*b)，与原行为一致)
+    const Physics2D::Material& matA = A->GetShape()->material;
+    const Physics2D::Material& matB = B->GetShape()->material;
+    float mu = Physics2D::Material::Combine(matA.dynamicFriction, matB.dynamicFriction, matA.frictionCombine);
 
 
     for (int i = 0; i < m.contactCount; ++i) {
@@ -92,13 +94,15 @@ void PositionalCorrection(Manifold& m)
 
     Vector2 correction_vector = m.normal * correction_magnitude;
 
-    // --- 【核心修复】：使用直接修改 position，避免触发 setAwake ---
+    // --- 【核心修复】：静默修改 position，避免触发 setAwake 导致物体永远无法入睡 ---
+    // 【修复】法线由 A 指向 B：A 沿 -n 移动，B 沿 +n 移动（把两者分开）。
+    // 之前 B 也沿 -n 移动，等于把 B 往 A 里推，物体会越陷越深
     if (m.bodyA->getInvMass() > 0.0f) {
-        m.bodyA->SetPosition(m.bodyA->GetPosition() - correction_vector * m.bodyA->getInvMass());
+        m.bodyA->SetPositionQuiet(m.bodyA->GetPosition() - correction_vector * m.bodyA->getInvMass());
     }
 
     if (m.bodyB->getInvMass() > 0.0f) {
-        m.bodyB->SetPosition(m.bodyB->GetPosition() - correction_vector * m.bodyB->getInvMass());
+        m.bodyB->SetPositionQuiet(m.bodyB->GetPosition() + correction_vector * m.bodyB->getInvMass());
 
     }
 

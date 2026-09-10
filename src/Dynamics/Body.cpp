@@ -15,10 +15,16 @@ void Body::SetPosition(float x, float y)
 
 void Body::SetPosition(const Vector2& v)
 {
-    position = v; 
+    position = v;
     setAwake(true); // 被推了一把，必须醒来
     updateAABB();
-    
+
+}
+
+void Body::SetPositionQuiet(const Vector2& v)
+{
+    position = v;
+    updateAABB();
 }
 
 void Body::SetRotation(float r)
@@ -30,6 +36,7 @@ void Body::SetRotation(float r)
 void Body::SetShape(Shape* s, float density)
 {
     this->shape = s;
+    s->material.density = density; // density 写回材质，保持唯一数据源
     MassData data = s->ComputeMass(density);
     this->mass = data.mass;
     if (this->mass > 0)
@@ -103,6 +110,7 @@ void Body::SetType(BodyType type, float density) {
     else {
         // --- 切换到动态 ---
         // 1. 重新计算物理属性
+        shape->material.density = density; // density 写回材质，保持唯一数据源
         MassData data = shape->ComputeMass(density);
         this->mass = data.mass;
         this->invMass = (mass > 0.0f) ? 1.0f / mass : 0.0f;
@@ -174,4 +182,22 @@ void Body::SetTransform(const Vector2& position, float angle) {
 void Body::SetTransform(const Transform& tf) {
     // 直接复用上面的逻辑
     SetTransform(tf.p, tf.q);
+}
+
+void Body::UpdateMassData()
+{
+    // 运行时修改 shape->material.density 后调用，重新计算质量属性
+    if (shape == nullptr) {
+        mass = 0.0f;
+        invMass = 0.0f;
+        inertia = 0.0f;
+        invInertia = 0.0f;
+        return;
+    }
+
+    MassData data = shape->ComputeMass(shape->material.density);
+    mass = data.mass;
+    invMass = (mass > 0.0f) ? 1.0f / mass : 0.0f;
+    inertia = data.inertia;
+    invInertia = (inertia > 0.0f) ? 1.0f / inertia : 0.0f;
 }

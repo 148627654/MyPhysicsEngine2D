@@ -266,9 +266,17 @@ bool Collision::Dispatch(Manifold* m, Body* a, Body* b) {
 
 	// 3. 混合类型碰撞 (Box vs Circle) -> 巧妙交换参数
 	if (typeA == Shape::Type::type_Box && typeB == Shape::Type::type_Circle) {
-		// 交换 a, b 顺序调用，并把法线反向
+		// CircleVsBox 内部约定 A=circle, B=box, 法线方向 A->B；
+		// 这里把 bodyA/bodyB 交换回与 Contact 一致的排序，同时翻转法线保持 A->B 约定
+		// 【修复】之前只翻法线不换 body，导致流形法线与 bodyA->bodyB 方向相反，
+		// 混合类型碰撞的法向冲量为负被 clamp 成 0，位置修正方向也反了（球会陷进地面）
 		bool hit = Collision::CircleVsBox(m, b, a);
-		if (hit) m->normal = m->normal * -1.0f;
+		if (hit) {
+			Body* tmp = m->bodyA;
+			m->bodyA = m->bodyB;
+			m->bodyB = tmp;
+			m->normal = m->normal * -1.0f;
+		}
 		return hit;
 	}
 

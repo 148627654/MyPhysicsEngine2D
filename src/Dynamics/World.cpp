@@ -163,7 +163,7 @@ void World::SolveTOI(Contact* contact, float dt) {
     contact->update();
 
     // --- 3. 拦截解算 ---
-    if (contact->IsTouching()) {
+    if (contact->IsTouching() && !contact->IsTrigger()) {
         ImpulseSolver(contact->GetManifold());
 
         // 唤醒双方
@@ -375,8 +375,11 @@ void World::UpdateAllContactsAndTOI(float dt) {
         HandleNewCollision(uA, uB, dt);
         });
 
-    // 2. 更新已有对的状态和 TOI
+    // 2. 每帧刷新已有接触的几何状态（touching / 流形）并更新 TOI
+    // 【修复】之前已有接触从不重新求值：若接触在肥 AABB 重叠但形状未真正接触时创建，
+    // touching 永远保持 false，物体将直接穿透（如高速球穿过地面）
     for (auto& pair : m_contactMap) {
+        pair.second->update();
         UpdateTOI(pair.second, dt);
     }
 }
