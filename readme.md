@@ -47,7 +47,7 @@ MyPhysicsEngine2D/
 ### 第 1 阶段：材质属性与复杂几何体扩展
 - [x] **Day 01: 材质系统 (Material) 与 触发器 (Trigger) 架构**
 - [x] **Day 02: 胶囊体碰撞 (Capsule Collider)**
-- [ ] **Day 03: 通用凸多边形表示与惯性属性 (Convex Polygon)**
+- [x] **Day 03: 通用凸多边形表示与惯性属性 (Convex Polygon)**
 - [ ] **Day 04: 多边形接触流形裁剪 (Sutherland-Hodgman Clipping)**
 
 ### 第 2 阶段：生命周期与事件系统
@@ -228,7 +228,100 @@ static bool CapsuleVsBox(Manifold* m, Body* capsuleBody, Body* boxBody);
 [INFO] >>> ALL TESTS PASSED <<<
 ```
 ---
+这里是为你量身编写的 **V3 - Day 03 任务总结（README 增补内容）**。
 
+你可以直接将其复制并追加到你的 `README.md` 中，同时将进度表中的 `Day 03` 勾选为 `[x]`：
+
+---
+
+## 🚀 Day 03 进展：通用凸多边形 (Convex Polygon) 与格林公式惯量解析积分
+
+### 1. 技术核心：几何严谨性与质心归零法则
+通用凸多边形是刚体物理引擎表达任意复杂刚体的基石。不同于游戏引擎纯渲染用的网格，物理引擎对几何多边形有着极其苛刻的**拓扑和动力学约束**：
+
+#### A. 凸性闭环与逆时针 (CCW) 拓扑约束
+为了确保分离轴定理（SAT）和后续的接触裁剪有效，输入点集必须满足：
+1. **顶点数受限**：设定 `MAX_VERTICES = 8`（工业界标准如 Box2D），在绝大多数场景表达能力与 CPU 缓存行命中率之间取得极致平衡。
+2. **闭环拐角正定性**：遍历所有 $N$ 个闭环拐角，根据二维叉积严格断言前进方向内部始终在左侧：
+   $$(P_{i+1} - P_i) \times (P_{i+2} - P_{i+1}) > 0$$
+   *彻底拦截顺时针顶点序（CW）、共线退化边以及内凹角（Concave）。*
+
+#### B. 动力学铁律：质心归零化 (Centroid Centering)
+在刚体动力学中，如果形状的局部原点 $(0,0)$ 不在物理质心上，旋转积分时会导致刚体绕“偏心点”旋转，从而产生荒谬的自旋伪力矩。
+* **双阶段平移机制**：
+  1. 先用原始坐标计算几何形心 $C$。
+  2. 将所有局部顶点强制统一平移：$P'_i = P_i - C$。
+  3. 使多边形在局部坐标系下严格满足 $\iint \mathbf{r} \, dA = \mathbf{0}$。
+  *(测试实测：偏心三角形在 `Set()` 后，重算质心精确达到 `(-0.000000, -0.000000)`)*
+
+---
+
+### 2. 数学积分与核心算法深度详解
+
+#### ① 格林公式与三角形拆分积分（面积、转动惯量）
+对于质心归零后的凸多边形，我们以局部原点 $(0,0)$ 为中心建立微元三角形扇面，使用**格林公式（Green's Theorem）**将二重积分转化为边缘曲线闭环积分：
+* **鞋带公式（Shoelace Formula）求面积**：
+  $$Area = \frac{1}{2} \sum_{i=0}^{n-1} (P_i \times P_{i+1})$$
+* **二次惯性矩解析闭式解 (Closed-form Polar Inertia)**：
+  对三角形微元 $\iint (x^2 + y^2) dx dy$ 解析求导，导出无需二重采样的精确积分式：
+  $$D = P_i \times P_{i+1}$$
+  $$I_{\Delta} = \frac{D}{12} \left( \|P_i\|^2 + P_i \cdot P_{i+1} + \|P_{i+1}\|^2 \right)$$
+  $$I_{\text{total}} = \rho \sum_{i=0}^{n-1} I_{\Delta_i}, \quad m = \rho \cdot Area$$
+
+* **Box vs Polygon 理论对照大杀器**：
+  长宽为 $(2, 4)$、密度为 $1.5$ 的矩形：
+  - 矩形理论值：$Area = 8.0, \quad m = 12.0, \quad I = \frac{1}{12} \times 12 \times (2^2 + 4^2) = 20.0$
+  - `Polygon` 三角微元积分输出：`area=8.000000, mass=12.000000, inertia=20.000000`
+  *两套完全不同的数学体系在浮点数 $10^{-6}$ 精度下达成完美收敛吻合！*
+
+---
+
+#### ② Cyrus-Beck 局部空间半空间射线裁剪算法
+```cpp
+bool Polygon::RayCast(RayCastOutput* output, RayCastInput& input, const Vector2& position, float rotation);
+```
+* **算法思想**：凸多边形是 $N$ 个半空间（Half-spaces）的交集。
+  1. **坐标系逆变换**：将世界射线通过刚体位姿变换到局部空间，直接复用预计算的局部单位外法线 `m_normals`。
+  2. **区间收窄 (Interval Clipping)**：
+     - 入边 ($d \cdot \mathbf{n}_i < 0$)：持续推后进入时间 $t_{\text{lower}} = \max(t_{\text{lower}}, t)$，记录命中边索引。
+     - 出边 ($d \cdot \mathbf{n}_i > 0$)：持续提前离开时间 $t_{\text{upper}} = \min(t_{\text{upper}}, t)$。
+     - 若 $t_{\text{lower}} > t_{\text{upper}}$，说明射线从多边形外侧擦过，立即剪枝返回 `false`。
+  3. **法线正交性校验**：
+     测试中正五边形在参数 $t = 0.329870$ 处被命中，命中外法线与被击中线段的点积严格为 `0.000000`，证明几何法线绝对垂直于碰撞边界。
+
+---
+
+### 3. 开发复盘：Day 03 攻克的几何与工程陷阱
+
+#### **问题 A：指针数组与模长语义混淆（崩溃隐患）**
+- **现象**：`Polygon::Set` 遍历时突发内存非法访问崩溃（Access Violation）。
+- **根因**：写出了 `int length = vertices->Length();`。`vertices` 是原始指针，此写法将第 0 个矢量的模长 $\sqrt{x^2+y^2}$ 强转为循环上限，丢弃了传参的真实顶点数 `count`。
+- **解决**：改用传入的 `count` 变量，并加上严格边界断言 `3 <= count <= MAX_VERTICES`。
+
+#### **问题 B：多边形首尾拐角的“闭环漏检”**
+- **现象**：一个最后一个角凹陷的“飞镖形”多边形被非法判定为合法凸多边形。
+- **根因**：循环仅检查了下标 $1 \dots (n-1)$ 的角，遗漏了由第 $N-1$ 点连向第 $0$ 点、再由第 $0$ 点连向第 $1$ 点构成的闭合拐角。
+- **解决**：采用环形取模索引 `(i + 1) % count` 和 `(i + 2) % count`，完整覆盖多边形的全部 $N$ 个内角。
+
+---
+
+### 4. 如何验证
+运行 `tests/PolygonTests.cpp`。当前已全绿通过以下几何、动力学与射线测试：
+- ✅ **矩形等价性对照**：四角点构造的 Polygon 与 Box 在面积、质量、转动惯量上达成 $0$ 误差一致。
+- ✅ **质心平移修正**：偏心三角形经过归零化后质心精准归零至 $(0, 0)$，面积严格守恒为 $6.0$。
+- ✅ **非法几何防御拦截**：顺时针顶点、凹多边形、点数不足 3 均被 `Set()` 精准拒绝。
+- ✅ **Cyrus-Beck 射线检测**：正五边形求交命中比例精确匹配理论值 $0.329870$，且法线正交积为 $0$。
+
+**Day 03 运行快照：**
+```text
+[INFO] >>> Starting V3 003: Polygon Test...
+[INFO] Box vs Polygon: area=8.000000 mass=12.000000 inertia=20.000000 (box inertia=20.000000) -> PASS
+[INFO] CentroidShift: centroid=(-0.000000, -0.000000) -> PASS
+[INFO] Validation: rejectCW=1 rejectConcave=1 rejectFewVerts=1 -> PASS
+[INFO] RayCast: hit=1 t=0.329870 normal=(-0.951057, -0.309017) dot(n,edge)=0.000000 -> PASS
+[INFO] >>> ALL TESTS PASSED <<<
+```
+---
 ## 💻 编译与运行
 - **开发环境**：Visual Studio 2019 / 2022 (ISO C++11 Standard)
 - **编译依赖**：无第三方依赖（纯手搓核心数学与几何算法）

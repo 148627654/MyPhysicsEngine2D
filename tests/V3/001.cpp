@@ -5,21 +5,21 @@
 #include "../Utils/Logger.h"
 #include <cmath>
 
-// --- ³¡¾° 1: ´¥·¢Æ÷´©Í¸ÑéÖ¤ ---
-// Çò´Ó¸ß´¦×ÔÓÉÂäÌå£¬´©¹ıºáÔÚÂ·¾¶ÉÏµÄ´¥·¢Æ÷ºĞ×Ó£¨ÎŞÈÎºÎÎïÀíÏìÓ¦£©£¬×îÖÕÂäÔÚµØÃæ
+// --- åœºæ™¯ 1: è§¦å‘å™¨ç©¿é€éªŒè¯ ---
+// çƒä»é«˜å¤„è‡ªç”±è½ä½“ï¼Œç©¿è¿‡æ¨ªåœ¨è·¯å¾„ä¸Šçš„è§¦å‘å™¨ç›’å­ï¼ˆæ— ä»»ä½•ç‰©ç†å“åº”ï¼‰ï¼Œæœ€ç»ˆè½åœ¨åœ°é¢
 bool RunTriggerTest() {
     World world(Vector2(0, -9.8f));
     float dt = 1.0f / 60.0f;
 
-    // µØÃæ (density = 0 -> ¾²Ì¬)
+    // åœ°é¢ (density = 0 -> é™æ€)
     world.AddBody(new Body(new Box(20.0f, 2.0f), 0, -2.0f, 0.0f));
 
-    // ´¥·¢Æ÷£º¾²Ì¬ºĞ×ÓºáÔÚÇòµÄÏÂÂäÂ·¾¶ÉÏ (y = 5£¬·¶Î§ 4.5 ~ 5.5)
+    // è§¦å‘å™¨ï¼šé™æ€ç›’å­æ¨ªåœ¨çƒçš„ä¸‹è½è·¯å¾„ä¸Š (y = 5ï¼ŒèŒƒå›´ 4.5 ~ 5.5)
     Box* triggerBox = new Box(10.0f, 1.0f);
     triggerBox->isTrigger = true;
     world.AddBody(new Body(triggerBox, 0, 5.0f, 0.0f));
 
-    // ¶¯Ì¬Çò£¬´Ó y = 10 ×ÔÓÉÂäÌå
+    // åŠ¨æ€çƒï¼Œä» y = 10 è‡ªç”±è½ä½“
     Body* ball = new Body(new Circle(0.5f), 0.0f, 10.0f, 1.0f);
     world.AddBody(ball);
 
@@ -28,15 +28,15 @@ bool RunTriggerTest() {
     for (int i = 0; i < 300; ++i) {
         world.Step(dt);
         float y = ball->GetPosition().getY();
-        // ÇòĞÄµÍÓÚ´¥·¢Æ÷µ×Ãæ (4.5) Ê±¼ÇÂ¼ËÙ¶È
+        // çƒå¿ƒä½äºè§¦å‘å™¨åº•é¢ (4.5) æ—¶è®°å½•é€Ÿåº¦
         if (!passedTrigger && y < 4.0f) {
             passedTrigger = true;
             vyAtPass = ball->GetVelocity().getY();
         }
     }
     float finalY = ball->GetPosition().getY();
-    bool onGround = std::abs(finalY - (-0.5f)) < 0.3f; // µØÃæ¶¥Ãæ -1 + Çò°ë¾¶ 0.5
-    bool asleep = !ball->IsAwake(); // ¾²Ö¹ÎÈ¶¨ºóÓ¦ÈëË¯
+    bool onGround = std::abs(finalY - (-0.5f)) < 0.3f; // åœ°é¢é¡¶é¢ -1 + çƒåŠå¾„ 0.5
+    bool asleep = !ball->IsAwake(); // é™æ­¢ç¨³å®šååº”å…¥ç¡
 
     Logger::Info("Trigger: passed=" + std::to_string(passedTrigger) +
         " vy_at_pass=" + std::to_string(vyAtPass) +
@@ -44,11 +44,11 @@ bool RunTriggerTest() {
         " onGround=" + std::to_string(onGround) +
         " asleep=" + std::to_string(asleep));
 
-    // ´©¹ı´¥·¢Æ÷Ê±ÈÔÔÚÏÂÂä (vy < 0£¬ËµÃ÷Ã»ÓĞ±»µ¯Æğ)£¬ÇÒ×îÖÕÍ£ÔÚÂ·Ãæ²¢ÈëË¯
+    // ç©¿è¿‡è§¦å‘å™¨æ—¶ä»åœ¨ä¸‹è½ (vy < 0ï¼Œè¯´æ˜æ²¡æœ‰è¢«å¼¹èµ·)ï¼Œä¸”æœ€ç»ˆåœåœ¨è·¯é¢å¹¶å…¥ç¡
     return passedTrigger && onGround && vyAtPass < 0.0f && asleep;
 }
 
-// --- ³¡¾° 2: Material::Combine ËÄÖÖºÏ²¢Ä£Ê½ÊıÖµÑéÖ¤ ---
+// --- åœºæ™¯ 2: Material::Combine å››ç§åˆå¹¶æ¨¡å¼æ•°å€¼éªŒè¯ ---
 bool RunCombineTest() {
     using namespace Physics2D;
     bool ok =
@@ -60,20 +60,20 @@ bool RunCombineTest() {
     return ok;
 }
 
-// --- ³¡¾° 3: density Ğ´»Ø material + ¾É½Ó¿ÚÍ¸´« + UpdateMassData ---
+// --- åœºæ™¯ 3: density å†™å› material + æ—§æ¥å£é€ä¼  + UpdateMassData ---
 bool RunDensityTest() {
-    // Body ¹¹ÔìÊ± density Ó¦Ğ´»Ø shape->material£¨Î¨Ò»Êı¾İÔ´£©
+    // Body æ„é€ æ—¶ density åº”å†™å› shape->materialï¼ˆå”¯ä¸€æ•°æ®æºï¼‰
     Circle* c = new Circle(1.0f);
     Body* b = new Body(c, 0, 0, 2.5f);
     bool ok = std::abs(c->material.density - 2.5f) < 1e-6f;
 
-    // ¾É½Ó¿ÚÍ¸´«£ºsetRestitution / setFriction Ó¦Ğ´Èë material
+    // æ—§æ¥å£é€ä¼ ï¼šsetRestitution / setFriction åº”å†™å…¥ material
     b->setRestitution(0.4f);
     b->setFriction(0.7f);
     ok &= std::abs(c->material.restitution - 0.4f) < 1e-6f;
     ok &= std::abs(c->material.dynamicFriction - 0.7f) < 1e-6f;
 
-    // ÔËĞĞÊ±ĞŞ¸Ä²ÄÖÊÃÜ¶Èºóµ÷ÓÃ UpdateMassData ÖØËãÖÊÁ¿ÊôĞÔ
+    // è¿è¡Œæ—¶ä¿®æ”¹æè´¨å¯†åº¦åè°ƒç”¨ UpdateMassData é‡ç®—è´¨é‡å±æ€§
     c->material.density = 3.0f;
     b->UpdateMassData();
 

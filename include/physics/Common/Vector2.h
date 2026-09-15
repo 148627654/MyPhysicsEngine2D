@@ -7,7 +7,7 @@ public:
 	~Vector2() = default;
 	constexpr Vector2(float x = 0.0, float y = 0.0) :x(x), y(y) {}
 	//向量与向量
-	Vector2 operator+(const Vector2& val);
+	Vector2 operator+(const Vector2& val)const;
 	Vector2 operator-(const Vector2& val)const;
 	Vector2& operator+=(const Vector2& val);
 	Vector2& operator-=(const Vector2& val);
@@ -56,7 +56,7 @@ public:
 	inline Vector2 Add(const Vector2& v) const { return Vector2(x + v.getX( ) , y + v.getY( )); }
 	inline Vector2 Sub(const Vector2& v) const { return Vector2(x - v.getX( ) , y - v.getY( )); }
 	inline Vector2 Mul(float s) const { return Vector2(x * s , y * s); }
-private:
+public:
 	float x;
 	float y;
 };

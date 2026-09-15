@@ -8,14 +8,14 @@
 #include "../Utils/Logger.h"
 #include <cmath>
 
-// ÏòÁ¿½üËÆÏàµÈÅĞ¶Ï
+// å‘é‡è¿‘ä¼¼ç›¸ç­‰åˆ¤æ–­
 static bool Near(const Vector2& a, const Vector2& b, float tol) {
     return std::abs(a.getX() - b.getX()) < tol && std::abs(a.getY() - b.getY()) < tol;
 }
 
-// --- ³¡¾° 1: ¼¸ºÎÖÊÁ¿¼ÆËã ---
-// ½ºÄÒÌå r=1, L=4, ÃÜ¶È ¦Ñ=1.0
-// Ãæ»ı = ¾ØĞÎ 2r*L + ÕûÔ² PI*r^2 = 8 + PI = 11.14159
+// --- åœºæ™¯ 1: å‡ ä½•è´¨é‡è®¡ç®— ---
+// èƒ¶å›Šä½“ r=1, L=4, å¯†åº¦ Ï=1.0
+// é¢ç§¯ = çŸ©å½¢ 2r*L + æ•´åœ† PI*r^2 = 8 + PI = 11.14159
 bool RunMassTest() {
     Capsule* cap = new Capsule(1.0f, 4.0f);
 
@@ -24,14 +24,14 @@ bool RunMassTest() {
     Logger::Info("area = " + std::to_string(cap->getArea()) +
         " (expected " + std::to_string(expectedArea) + ") " + (ok ? "PASS" : "FAIL"));
 
-    // ÃÜ¶È 1.0 -> mass = area, inertia = mass * (L^2/12 + r^2/2)
+    // å¯†åº¦ 1.0 -> mass = area, inertia = mass * (L^2/12 + r^2/2)
     Body* body = new Body(cap, 0.0f, 0.0f, 1.0f);
     float expectedMass = expectedArea * 1.0f;
     ok &= std::abs(body->getMass() - expectedMass) < 1e-3f;
     float expectedInertia = expectedMass * (4.0f * 4.0f / 12.0f + 1.0f * 1.0f / 2.0f);
     ok &= std::abs(body->getInertia() - expectedInertia) < 1e-3f;
 
-    // UpdateMassData£ºÔËĞĞÊ±¸ÄÃÜ¶ÈºóÖØËã mass ºÍ inertia
+    // UpdateMassDataï¼šè¿è¡Œæ—¶æ”¹å¯†åº¦åé‡ç®— mass å’Œ inertia
     cap->material.density = 2.0f;
     body->UpdateMassData();
     ok &= std::abs(body->getMass() - expectedMass * 2.0f) < 1e-3f;
@@ -41,15 +41,15 @@ bool RunMassTest() {
     return ok;
 }
 
-// --- ³¡¾° 2: µãÓëÏß¶Î×î¶Ì¾àÀë ---
+// --- åœºæ™¯ 2: ç‚¹ä¸çº¿æ®µæœ€çŸ­è·ç¦» ---
 bool RunClosestPointTest() {
     Vector2 a(0.0f, -2.0f), b(0.0f, 2.0f);
 
-    // ²âÊÔµã (5, 0)£º×î½üµã±ØĞëÊÇÏß¶ÎÖĞµã (0, 0)
+    // æµ‹è¯•ç‚¹ (5, 0)ï¼šæœ€è¿‘ç‚¹å¿…é¡»æ˜¯çº¿æ®µä¸­ç‚¹ (0, 0)
     Vector2 p1 = Collision::ClosestPointOnSegment(Vector2(5.0f, 0.0f), a, b);
     bool ok = Near(p1, Vector2(0.0f, 0.0f), 1e-4f);
 
-    // ²âÊÔµã (3, 5)£º×î½üµã±ØĞëÊÇ¶Ëµã (0, 2)
+    // æµ‹è¯•ç‚¹ (3, 5)ï¼šæœ€è¿‘ç‚¹å¿…é¡»æ˜¯ç«¯ç‚¹ (0, 2)
     Vector2 p2 = Collision::ClosestPointOnSegment(Vector2(3.0f, 5.0f), a, b);
     ok &= Near(p2, Vector2(0.0f, 2.0f), 1e-4f);
 
@@ -57,19 +57,19 @@ bool RunClosestPointTest() {
     return ok;
 }
 
-// --- ³¡¾° 3: Capsule vs Circle ¶Ô×²·´µ¯ ---
-// ½ºÄÒÌåÆ½ÌÉ£¨Ğı×ª 90¡ã£©×÷¾²Ì¬Ä¿±ê£¬Ğ¡Çò´¹Ö±ÂäÏÂ»÷ÖĞÔ²Öù²àÒí
+// --- åœºæ™¯ 3: Capsule vs Circle å¯¹æ’åå¼¹ ---
+// èƒ¶å›Šä½“å¹³èººï¼ˆæ—‹è½¬ 90Â°ï¼‰ä½œé™æ€ç›®æ ‡ï¼Œå°çƒå‚ç›´è½ä¸‹å‡»ä¸­åœ†æŸ±ä¾§ç¿¼
 bool RunCapsuleVsCircleTest() {
     World world(Vector2(0, -9.8f));
     float dt = 1.0f / 60.0f;
 
-    // Æ½ÌÉ½ºÄÒÌå£ºr=1, L=4, ÖĞĞÄ (0,0)£¬Ğı×ª 90¡ã ºó¹Ç¼ÜÑØ X Öá
+    // å¹³èººèƒ¶å›Šä½“ï¼šr=1, L=4, ä¸­å¿ƒ (0,0)ï¼Œæ—‹è½¬ 90Â° åéª¨æ¶æ²¿ X è½´
     Body* capsule = new Body(new Capsule(1.0f, 4.0f), 0.0f, 0.0f, 0.0f);
     capsule->SetRotation(Settings::PAI / 2.0f);
     capsule->GetShape()->material.restitution = 1.0f;
     world.AddBody(capsule);
 
-    // Ğ¡Çò´Ó (1.5, 4) ´¹Ö±ÂäÏÂ£¬»÷ÖĞ²àÒí£¨·Ç¶ËµãÃ±£©
+    // å°çƒä» (1.5, 4) å‚ç›´è½ä¸‹ï¼Œå‡»ä¸­ä¾§ç¿¼ï¼ˆéç«¯ç‚¹å¸½ï¼‰
     Body* ball = new Body(new Circle(0.5f), 1.5f, 4.0f, 1.0f);
     ball->GetShape()->material.restitution = 1.0f;
     world.AddBody(ball);
@@ -82,11 +82,11 @@ bool RunCapsuleVsCircleTest() {
         world.Step(dt);
         float vy = ball->GetVelocity().getY();
         maxVy = std::max(maxVy, vy);
-        if (vy > 1.0f) bounced = true; // »ñµÃÏòÉÏµÄ·´µ¯ËÙ¶È
+        if (vy > 1.0f) bounced = true; // è·å¾—å‘ä¸Šçš„åå¼¹é€Ÿåº¦
         if (bounced) minYAfterBounce = std::min(minYAfterBounce, ball->GetPosition().getY());
     }
 
-    // ¾«×¼·´µ¯£¨vy ½Ó½ü×²»÷ËÙ¶È ~7£©¡¢´©Í¸±»ÍÆ¿ª£¨Î´ÏİÈë½ºÄÒÄÚ²¿£©¡¢´¹Ö±·¨ÏßÎŞºáÏòÆ«ÒÆ
+    // ç²¾å‡†åå¼¹ï¼ˆvy æ¥è¿‘æ’å‡»é€Ÿåº¦ ~7ï¼‰ã€ç©¿é€è¢«æ¨å¼€ï¼ˆæœªé™·å…¥èƒ¶å›Šå†…éƒ¨ï¼‰ã€å‚ç›´æ³•çº¿æ— æ¨ªå‘åç§»
     bool ok = bounced && maxVy > 3.0f
         && minYAfterBounce > 1.35f
         && std::abs(ball->GetPosition().getX() - startX) < 0.01f;
@@ -99,24 +99,24 @@ bool RunCapsuleVsCircleTest() {
     return ok;
 }
 
-// --- ³¡¾° 4: Capsule vs Capsule Ê®×Ö½»²æÅö×² ---
-// ´¹Ö±½ºÄÒÌåÂäÔÚÆ½ÌÉ½ºÄÒÌåÉÏ£¬ĞÎ³ÉÊ®×Ö×²»÷
+// --- åœºæ™¯ 4: Capsule vs Capsule åå­—äº¤å‰ç¢°æ’ ---
+// å‚ç›´èƒ¶å›Šä½“è½åœ¨å¹³èººèƒ¶å›Šä½“ä¸Šï¼Œå½¢æˆåå­—æ’å‡»
 bool RunCapsuleVsCapsuleTest() {
     World world(Vector2(0, -9.8f));
     float dt = 1.0f / 60.0f;
 
-    // Æ½ÌÉ½ºÄÒÌå£¨¾²Ì¬£©
+    // å¹³èººèƒ¶å›Šä½“ï¼ˆé™æ€ï¼‰
     Body* horizontal = new Body(new Capsule(1.0f, 4.0f), 0.0f, 0.0f, 0.0f);
     horizontal->SetRotation(Settings::PAI / 2.0f);
     world.AddBody(horizontal);
 
-    // ´¹Ö±½ºÄÒÌå´Ó (0, 5) ×ÔÓÉÂäÏÂ£¬ÖĞµãÕı¶ÔÊ®×Ö½»²æµã
+    // å‚ç›´èƒ¶å›Šä½“ä» (0, 5) è‡ªç”±è½ä¸‹ï¼Œä¸­ç‚¹æ­£å¯¹åå­—äº¤å‰ç‚¹
     Body* vertical = new Body(new Capsule(1.0f, 4.0f), 0.0f, 5.0f, 1.0f);
     world.AddBody(vertical);
 
     for (int i = 0; i < 300; ++i) world.Step(dt);
 
-    // ¼ì²é½Ó´¥Á÷ĞÎ£ºÇ¡ºÃ 1 ¸ö½Ó´¥µã£¬·¨ÏßÊúÖ±ÏòÉÏ£¨´ÓÆ½ÌÉ½ºÄÒÖ¸Ïò´¹Ö±½ºÄÒ = ÊÜÁ¦·´·½Ïò£©
+    // æ£€æŸ¥æ¥è§¦æµå½¢ï¼šæ°å¥½ 1 ä¸ªæ¥è§¦ç‚¹ï¼Œæ³•çº¿ç«–ç›´å‘ä¸Šï¼ˆä»å¹³èººèƒ¶å›ŠæŒ‡å‘å‚ç›´èƒ¶å›Š = å—åŠ›åæ–¹å‘ï¼‰
     bool ok = false;
     Vector2 normal;
     Vector2 contact;
@@ -130,10 +130,10 @@ bool RunCapsuleVsCapsuleTest() {
             contact = mm.contacts[0];
         }
     }
-    ok &= std::abs(normal.getX()) < 0.05f && normal.getY() > 0.95f;  // ·¨ÏßÊúÖ±ÏòÉÏ
-    ok &= std::abs(contact.getX()) < 0.1f;                            // ½Ó´¥µãÔÚÁ½ÖĞµã x¡Ö0
-    ok &= std::abs(vertical->GetPosition().getY() - 4.0f) < 0.3f;     // Í£ÔÚÆ½ÌÉ½ºÄÒÉÏ·½
-    ok &= std::abs(vertical->GetVelocity().getY()) < 0.01f;           // ÒÑ¾²Ö¹
+    ok &= std::abs(normal.getX()) < 0.05f && normal.getY() > 0.95f;  // æ³•çº¿ç«–ç›´å‘ä¸Š
+    ok &= std::abs(contact.getX()) < 0.1f;                            // æ¥è§¦ç‚¹åœ¨ä¸¤ä¸­ç‚¹ xâ‰ˆ0
+    ok &= std::abs(vertical->GetPosition().getY() - 4.0f) < 0.3f;     // åœåœ¨å¹³èººèƒ¶å›Šä¸Šæ–¹
+    ok &= std::abs(vertical->GetVelocity().getY()) < 0.01f;           // å·²é™æ­¢
 
     Logger::Info("CapsuleVsCapsule: contactCount=1 normal=(" + std::to_string(normal.getX()) +
         ", " + std::to_string(normal.getY()) + ") contactY=" + std::to_string(contact.getY()) +
@@ -142,13 +142,13 @@ bool RunCapsuleVsCapsuleTest() {
     return ok;
 }
 
-int main() {
-    Logger::Info(">>> Starting V3 002: Capsule Test...");
-    bool ok = true;
-    ok &= RunMassTest();
-    ok &= RunClosestPointTest();
-    ok &= RunCapsuleVsCircleTest();
-    ok &= RunCapsuleVsCapsuleTest();
-    Logger::Info(ok ? ">>> ALL TESTS PASSED <<<" : ">>> SOME TESTS FAILED <<<");
-    return ok ? 0 : 1;
-}
+//int main() {
+//    Logger::Info(">>> Starting V3 002: Capsule Test...");
+//    bool ok = true;
+//    ok &= RunMassTest();
+//    ok &= RunClosestPointTest();
+//    ok &= RunCapsuleVsCircleTest();
+//    ok &= RunCapsuleVsCapsuleTest();
+//    Logger::Info(ok ? ">>> ALL TESTS PASSED <<<" : ">>> SOME TESTS FAILED <<<");
+//    return ok ? 0 : 1;
+//}

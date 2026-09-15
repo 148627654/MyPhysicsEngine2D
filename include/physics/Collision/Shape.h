@@ -15,7 +15,7 @@ class Shape
 {
 public:
 
-	enum Type { type_Circle, type_Box, type_Capsule};
+	enum Type { type_Circle, type_Box, type_Capsule,type_Polygon};
 	Type type;
 	virtual MassData ComputeMass(float density) = 0;//
 	virtual float getArea() const = 0;
