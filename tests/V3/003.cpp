@@ -158,13 +158,13 @@ bool RunRayCastTest() {
     return ok;
 }
 
-int main() {
-    Logger::Info(">>> Starting V3 003: Polygon Test...");
-    bool ok = true;
-    ok &= RunBoxPolygonEquivalenceTest();
-    ok &= RunCentroidShiftTest();
-    ok &= RunValidationTest();
-    ok &= RunRayCastTest();
-    Logger::Info(ok ? ">>> ALL TESTS PASSED <<<" : ">>> SOME TESTS FAILED <<<");
-    return ok ? 0 : 1;
-}
+//int main() {
+//    Logger::Info(">>> Starting V3 003: Polygon Test...");
+//    bool ok = true;
+//    ok &= RunBoxPolygonEquivalenceTest();
+//    ok &= RunCentroidShiftTest();
+//    ok &= RunValidationTest();
+//    ok &= RunRayCastTest();
+//    Logger::Info(ok ? ">>> ALL TESTS PASSED <<<" : ">>> SOME TESTS FAILED <<<");
+//    return ok ? 0 : 1;
+//}

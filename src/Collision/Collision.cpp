@@ -174,6 +174,436 @@ Vector2 Collision::ClosestPointOnSegment(const Vector2& p, const Vector2& a, con
 	return a.Add(ab * t);
 }
 
+void Collision::FindIncidentEdge(ClipVertex out[2], const Polygon* incPoly, const Body* incBody,
+	const Vector2& refNormal)
+{
+	int count = incPoly->GetVertexCount();
+	float rot = incBody->GetRotation();
+	Vector2 pos = incBody->GetPosition();
+
+	int bestEdge = 0;
+	float minDot = 1e30f;
+
+	// 寻找单位外法线与 refNormal 点积最小（最相反）的边
+	for (int i = 0; i < count; ++i) {
+		Vector2 localN = incPoly->GetNormal(i);
+		Vector2 worldN = localN.Rotate(rot);
+		float dot = worldN.Dot(refNormal);
+		if (dot < minDot) {
+			minDot = dot;
+			bestEdge = i;
+		}
+	}
+
+	// 提取附着边在世界坐标系下的两端点
+	int i1 = bestEdge;
+	int i2 = (bestEdge + 1) % count;
+
+	out[0].v = pos + incPoly->GetVertex(i1).Rotate(rot);
+	out[1].v = pos + incPoly->GetVertex(i2).Rotate(rot);
+}
+
+bool Collision::PolygonVsPolygon(Manifold* m, Body* a, Body* b)
+{
+	Polygon* polyA = static_cast<Polygon*>(a->GetShape());
+	Polygon* polyB = static_cast<Polygon*>(b->GetShape());
+
+	// -------------------------------------------------------------
+	// 第一步：双向 SAT 测试 (A 测 B 与 B 测 A)
+	// -------------------------------------------------------------
+	int edgeA = 0;
+	float sepA = FindMaxSeparation(edgeA, polyA, a, polyB, b);
+	if (sepA > 0.0f) {
+		return false; // A 的轴上有缝隙，绝对没撞
+	}
+
+	int edgeB = 0;
+	float sepB = FindMaxSeparation(edgeB, polyB, b, polyA, a);
+	if (sepB > 0.0f) {
+		return false; // B 的轴上有缝隙，绝对没撞
+	}
+
+	// -------------------------------------------------------------
+	// 第二步：仲裁参考多边形 (Reference) 与 附着多边形 (Incident)
+	// -------------------------------------------------------------
+	const Polygon* refPoly;
+	const Polygon* incPoly;
+	const Body* refBody;
+	const Body* incBody;
+	int refIndex;
+	bool flip; // 记录是否对调了身份，用于最后校正法线方向
+
+	// 工业级容差偏置 (0.98 + 0.001)，防止在数值相近时频繁闪烁切换参考面
+	if (sepB > 0.98f * sepA + 0.001f) {
+		refPoly = polyB; refBody = b;
+		incPoly = polyA; incBody = a;
+		refIndex = edgeB;
+		flip = true;
+	}
+	else {
+		refPoly = polyA; refBody = a;
+		incPoly = polyB; incBody = b;
+		refIndex = edgeA;
+		flip = false;
+	}
+
+	// -------------------------------------------------------------
+	// 第三步：提取参考边 (Reference Edge) 及其世界裁剪几何平面
+	// -------------------------------------------------------------
+	int refCount = refPoly->GetVertexCount();
+	int r1 = refIndex;
+	int r2 = (refIndex + 1) % refCount;
+
+	float refRot = refBody->GetRotation();
+	Vector2 refPos = refBody->GetPosition();
+
+	// 参考边的两个世界端点
+	Vector2 v1 = refPos + refPoly->GetVertex(r1).Rotate(refRot);
+	Vector2 v2 = refPos + refPoly->GetVertex(r2).Rotate(refRot);
+
+	Vector2 refTangent = (v2 - v1).Normalize();
+	Vector2 refNormal = refPoly->GetNormal(refIndex).Rotate(refRot);
+
+	// -------------------------------------------------------------
+	// 第四步：提取附着边并执行三道半平面裁剪 (Sutherland-Hodgman)
+	// -------------------------------------------------------------
+	ClipVertex incidentEdge[2];
+	FindIncidentEdge(incidentEdge, incPoly, incBody, refNormal);
+
+	// 裁剪刀 1：参考边左侧面 (-refTangent 平面，过 v1)
+	ClipVertex clip1[2];
+	float offset1 = -refTangent.Dot(v1);
+	int np = ClipSegmentToLine(clip1, incidentEdge, -refTangent, offset1);
+	if (np < 2) return false;
+
+	// 裁剪刀 2：参考边右侧面 (refTangent 平面，过 v2)
+	ClipVertex clip2[2];
+	float offset2 = refTangent.Dot(v2);
+	np = ClipSegmentToLine(clip2, clip1, refTangent, offset2);
+	if (np < 2) return false;
+
+	// 裁剪刀 3：参考边正面投影测量 (过滤掉深度 <= 0 的非接触点)
+	float frontOffset = refNormal.Dot(v1);
+	int contactCount = 0;
+	float maxPenetration = 0.0f;
+	Vector2 contacts[2];
+
+	for (int i = 0; i < 2; ++i) {
+		// 计算点到参考面正面的有向距离
+		float dist = refNormal.Dot(clip2[i].v) - frontOffset;
+		if (dist <= 0.0f) {
+			// dist <= 0 说明扎进了参考面内部
+			float pen = -dist;
+			maxPenetration = std::max(maxPenetration, pen);
+			contacts[contactCount++] = clip2[i].v;
+		}
+	}
+
+	if (contactCount == 0) {
+		return false;
+	}
+
+	// -------------------------------------------------------------
+	// 第五步：装配流形 Manifold (保证法线由 BodyA 指向 BodyB)
+	// -------------------------------------------------------------
+	m->bodyA = a;
+	m->bodyB = b;
+	// 如果是 B 作为参考面，refNormal 是由 B 指向 A 的，必须取反！
+	m->normal = flip ? -refNormal : refNormal;
+	m->penetration = maxPenetration;
+	m->contactCount = contactCount;
+	for (int i = 0; i < contactCount; ++i) {
+		m->contacts[i] = contacts[i];
+	}
+
+	return true;
+}
+
+bool Collision::PolygonVsCircle(Manifold* m, Body* polyBody, Body* circleBody)
+{
+	Circle* circle = static_cast<Circle*>(circleBody->GetShape());
+	Polygon* poly = static_cast<Polygon*>(polyBody->GetShape());
+	int count = poly->GetVertexCount();
+
+	// 1. 将圆心转换到多边形的局部坐标系 (平移 + 逆旋转)
+	Vector2 localCirclePos = circleBody->GetPosition() - polyBody->GetPosition();
+	Vector2 localCirclePosRotated = localCirclePos.Rotate(-polyBody->GetRotation());
+
+	Vector2 closestV1, closestV2;
+	Vector2 bestEdgeNormal;
+	float maxSeparation = -FLT_MAX; // 寻找最大分离度 (最浅穿透)
+
+	// 2. 利用 SAT 寻找离圆心最近的边
+	for (int i = 0; i < count; ++i)
+	{
+		Vector2 v1 = poly->GetVertex(i);
+		Vector2 v2 = poly->GetVertex((i + 1) % count);
+
+		// 【修复】直接使用 Set() 里预计算的外法线。
+		// 之前用 GetLeftNormal()：对逆时针多边形那是内向法线，
+		// 圆心在边外侧时 dist > r 被误判为"未碰撞"，多边形接触永远返回 false
+		Vector2 edge = v2 - v1;
+		Vector2 edgeNormal = poly->GetNormal(i);
+
+		// 有向距离：绝不能加 abs！
+		float dist = (localCirclePosRotated - v1).Dot(edgeNormal);
+
+		// 如果在某条轴上，圆心在边外侧且距离大于半径，说明绝对没撞上！
+		if (dist > circle->getR()) {
+			return false;
+		}
+
+		if (dist > maxSeparation)
+		{
+			maxSeparation = dist;
+			closestV1 = v1;
+			closestV2 = v2;
+			bestEdgeNormal = edgeNormal;
+		}
+	}
+
+	// 准备局部法线与局部接触点
+	Vector2 localNormal;
+	float penetration = 0.0f;
+	Vector2 localContact;
+
+	Vector2 edge = closestV2 - closestV1;
+
+	// 3. 判断落在“面区域”还是“角区域”（沃罗诺伊区域判定）
+	// --- 情况 A: 顶点 V1 角碰撞 ---
+	if (edge.Dot(localCirclePosRotated - closestV1) <= 0.0f)
+	{
+		Vector2 d = localCirclePosRotated - closestV1;
+		float distSq = d.LengthSquared();
+		if (distSq > circle->getR() * circle->getR()) {
+			return false; // 离角点太远，未碰撞
+		}
+
+		float dist = std::sqrt(distSq);
+		localNormal = (dist > 1e-6f) ? d * (1.0f / dist) : bestEdgeNormal;
+		penetration = circle->getR() - dist;
+		localContact = closestV1;
+	}
+	// --- 情况 B: 顶点 V2 角碰撞 ---
+	else if (edge.Dot(localCirclePosRotated - closestV2) >= 0.0f)
+	{
+		Vector2 d = localCirclePosRotated - closestV2;
+		float distSq = d.LengthSquared();
+		if (distSq > circle->getR() * circle->getR()) {
+			return false; // 离角点太远，未碰撞
+		}
+
+		float dist = std::sqrt(distSq);
+		localNormal = (dist > 1e-6f) ? d * (1.0f / dist) : bestEdgeNormal;
+		penetration = circle->getR() - dist;
+		localContact = closestV2;
+	}
+	// --- 情况 C: 平面接触 (纯面碰撞) ---
+	else
+	{
+		localNormal = bestEdgeNormal;
+		penetration = circle->getR() - maxSeparation;
+		localContact = localCirclePosRotated - bestEdgeNormal * circle->getR();
+	}
+
+	// 4. 将法线与接触点正向旋转平移回【世界坐标系】
+	float polyRot = polyBody->GetRotation();
+	Vector2 worldNormal = localNormal.Rotate(polyRot); // 从 Polygon 指向 Circle
+	Vector2 worldContact = polyBody->GetPosition() + localContact.Rotate(polyRot);
+
+	// 5. 填满流形 Manifold
+	m->bodyA = polyBody;
+	m->bodyB = circleBody;
+	m->normal = worldNormal;
+	m->penetration = penetration;
+	m->contacts[0] = worldContact;
+	m->contactCount = 1;
+
+	return true;
+}
+
+bool Collision::PolygonVsCapsule(Manifold* m, Body* polyBody, Body* capsuleBody)
+{
+	Polygon* poly = static_cast<Polygon*>(polyBody->GetShape());
+	Capsule* cap = static_cast<Capsule*>(capsuleBody->GetShape());
+
+	float radius = cap->GetRadius();
+	int count = poly->GetVertexCount();
+
+	// -------------------------------------------------------------
+	// 1. 获取胶囊体在世界坐标下的骨架两端点
+	// -------------------------------------------------------------
+	float halfLen = cap->GetLength() * 0.5f;
+	float capRot = capsuleBody->GetRotation();
+	// 局部 (0, 1) 旋转后的世界骨架方向
+	Vector2 capAxis(-std::sin(capRot) * halfLen, std::cos(capRot) * halfLen);
+	Vector2 worldA = capsuleBody->GetPosition() - capAxis;
+	Vector2 worldB = capsuleBody->GetPosition() + capAxis;
+
+	// -------------------------------------------------------------
+	// 2. 将胶囊体端点变换到【多边形局部空间】(平移 + 逆旋转)
+	// -------------------------------------------------------------
+	float polyRot = polyBody->GetRotation();
+	Vector2 polyPos = polyBody->GetPosition();
+	float cosP = std::cos(-polyRot);
+	float sinP = std::sin(-polyRot);
+
+	auto WorldToPolyLocal = [&](const Vector2& w) -> Vector2 {
+		Vector2 rel = w - polyPos;
+		return Vector2(rel.x * cosP - rel.y * sinP, rel.x * sinP + rel.y * cosP);
+		};
+
+	Vector2 locA = WorldToPolyLocal(worldA);
+	Vector2 locB = WorldToPolyLocal(worldB);
+
+	// -------------------------------------------------------------
+	// 3. SAT 分离轴检测：遍历多边形所有边
+	// -------------------------------------------------------------
+	int bestEdge = 0;
+	float maxSeparation = -1e30f;
+
+	for (int i = 0; i < count; ++i) {
+		Vector2 n = poly->GetNormal(i);
+		Vector2 v = poly->GetVertex(i);
+
+		// 计算线段两个端点到当前边的有向距离
+		float distA = (locA - v).Dot(n);
+		float distB = (locB - v).Dot(n);
+
+		// 胶囊体侵入该边最深的点
+		float sep = std::min(distA, distB);
+
+		// 如果在某条边上，最靠近的点距离都大于半径，说明存在分离轴，绝对没撞上！
+		if (sep > radius) {
+			return false;
+		}
+
+		if (sep > maxSeparation) {
+			maxSeparation = sep;
+			bestEdge = i;
+		}
+	}
+
+	// -------------------------------------------------------------
+	// 4. 提取最近边 (Reference Edge) 的几何特征
+	// -------------------------------------------------------------
+	Vector2 v1 = poly->GetVertex(bestEdge);
+	Vector2 v2 = poly->GetVertex((bestEdge + 1) % count);
+	Vector2 edgeDir = v2 - v1;
+	float edgeLen = edgeDir.Length();
+	if (edgeLen < 1e-6f) return false;
+
+	Vector2 edgeTangent = edgeDir * (1.0f / edgeLen);
+	Vector2 edgeNormal = poly->GetNormal(bestEdge);
+
+	// 计算 A 和 B 沿着边切线方向相对于 v1 的投影标量
+	float tA = (locA - v1).Dot(edgeTangent);
+	float tB = (locB - v1).Dot(edgeTangent);
+
+	// -------------------------------------------------------------
+	// 5. 沃罗诺伊区域 (Voronoi) 判定：是角碰撞还是面碰撞？
+	// -------------------------------------------------------------
+
+	// --- 情况 A: 两端点都偏向 V1 侧面之外 (与角点 V1 碰撞) ---
+	if (tA < 0.0f && tB < 0.0f) {
+		Vector2 closestOnSeg = ClosestPointOnSegment(v1, locA, locB);
+		Vector2 d = closestOnSeg - v1;
+		float distSq = d.LengthSquared();
+		if (distSq > radius * radius) return false;
+
+		float dist = std::sqrt(distSq);
+		Vector2 localNorm = (dist > 1e-6f) ? d * (1.0f / dist) : edgeNormal;
+
+		m->bodyA = polyBody;
+		m->bodyB = capsuleBody;
+		m->normal = localNorm.Rotate(polyRot);
+		m->penetration = radius - dist;
+		m->contacts[0] = polyPos + v1.Rotate(polyRot);
+		m->contactCount = 1;
+		return true;
+	}
+
+	// --- 情况 B: 两端点都偏向 V2 侧面之外 (与角点 V2 碰撞) ---
+	if (tA > edgeLen && tB > edgeLen) {
+		Vector2 closestOnSeg = ClosestPointOnSegment(v2, locA, locB);
+		Vector2 d = closestOnSeg - v2;
+		float distSq = d.LengthSquared();
+		if (distSq > radius * radius) return false;
+
+		float dist = std::sqrt(distSq);
+		Vector2 localNorm = (dist > 1e-6f) ? d * (1.0f / dist) : edgeNormal;
+
+		m->bodyA = polyBody;
+		m->bodyB = capsuleBody;
+		m->normal = localNorm.Rotate(polyRot);
+		m->penetration = radius - dist;
+		m->contacts[0] = polyPos + v2.Rotate(polyRot);
+		m->contactCount = 1;
+		return true;
+	}
+
+	// --- 情况 C: 面碰撞 (线段跨越在 [0, edgeLen] 内部) ---
+	// 对胶囊体骨架线段进行区间裁剪，截取落在 [0, edgeLen] 范围内的部分
+	float u1 = 0.0f, u2 = 1.0f;
+	float denom = tB - tA;
+
+	if (std::abs(denom) > 1e-6f) {
+		float s0 = (0.0f - tA) / denom;
+		float s1 = (edgeLen - tA) / denom;
+		float sMin = std::min(s0, s1);
+		float sMax = std::max(s0, s1);
+
+		u1 = std::max(u1, sMin);
+		u2 = std::min(u2, sMax);
+	}
+
+	// 得到裁剪后的有效线段候选点 (最多 2 个)
+	Vector2 clipPoints[2];
+	clipPoints[0] = locA + (locB - locA) * u1;
+	clipPoints[1] = locA + (locB - locA) * u2;
+
+	int contactCount = 0;
+	float maxPen = 0.0f;
+	Vector2 worldContacts[2];
+
+	for (int i = 0; i < 2; ++i) {
+		Vector2 pt = clipPoints[i];
+		// 计算候选点到边的垂直距离
+		float dist = (pt - v1).Dot(edgeNormal);
+		if (dist <= radius) {
+			float pen = radius - dist;
+			maxPen = std::max(maxPen, pen);
+
+			// 局部接触点取多边形边表面
+			Vector2 localContact = pt - edgeNormal * dist;
+			worldContacts[contactCount++] = polyPos + localContact.Rotate(polyRot);
+
+			// 如果两个裁剪点几乎重叠（两端极短），只保留 1 个点
+			if (i == 0 && (clipPoints[1] - clipPoints[0]).LengthSquared() < 1e-6f) {
+				break;
+			}
+		}
+	}
+
+	if (contactCount == 0) {
+		return false;
+	}
+
+	// -------------------------------------------------------------
+	// 6. 装配流形 Manifold (世界坐标)
+	// -------------------------------------------------------------
+	m->bodyA = polyBody;
+	m->bodyB = capsuleBody;
+	m->normal = edgeNormal.Rotate(polyRot); // 从 Polygon 指向 Capsule
+	m->penetration = maxPen;
+	m->contactCount = contactCount;
+	for (int i = 0; i < contactCount; ++i) {
+		m->contacts[i] = worldContacts[i];
+	}
+
+	return true;
+}
+
 bool Collision::CircleVsBox(Manifold* m, Body* circlebody, Body* boxbody)
 {
 	Circle* circle = static_cast<Circle*>(circlebody->GetShape());
@@ -269,6 +699,7 @@ bool Collision::Dispatch(Manifold* m, Body* a, Body* b) {
 	if (typeA == Shape::Type::type_Circle && typeB == Shape::Type::type_Circle) return Collision::CircleVsCircle(m, a, b);
 	if (typeA == Shape::Type::type_Box && typeB == Shape::Type::type_Box) return Collision::BoxVsBox(m, a, b);
 	if (typeA == Shape::Type::type_Capsule && typeB == Shape::Type::type_Capsule) return Collision::CapsuleVsCapsule(m, a, b);
+	if (typeA == Shape::Type::type_Polygon && typeB == Shape::Type::type_Polygon) return Collision::PolygonVsPolygon(m, a, b);
 
 	// 2. 混合类型碰撞 (Circle vs Box)
 	if (typeA == Shape::Type::type_Circle && typeB == Shape::Type::type_Box) {
@@ -322,7 +753,118 @@ bool Collision::Dispatch(Manifold* m, Body* a, Body* b) {
 		return hit;
 	}
 
+	// 6. 混合类型碰撞 (Polygon vs Circle) —— PolygonVsCircle 内部约定 A=polygon, B=circle, 法线 A->B
+	if (typeA == Shape::Type::type_Polygon && typeB == Shape::Type::type_Circle) {
+		return Collision::PolygonVsCircle(m, a, b);
+	}
+	if (typeA == Shape::Type::type_Circle && typeB == Shape::Type::type_Polygon) {
+		bool hit = Collision::PolygonVsCircle(m, b, a);
+		if (hit) {
+			Body* tmp = m->bodyA;
+			m->bodyA = m->bodyB;
+			m->bodyB = tmp;
+			m->normal = m->normal * -1.0f;
+		}
+		return hit;
+	}
+
+	// 7. 混合类型碰撞 (Polygon vs Capsule) —— PolygonVsCapsule 内部约定 A=polygon, B=capsule, 法线 A->B
+	if (typeA == Shape::Type::type_Polygon && typeB == Shape::Type::type_Capsule) {
+		return Collision::PolygonVsCapsule(m, a, b);
+	}
+	if (typeA == Shape::Type::type_Capsule && typeB == Shape::Type::type_Polygon) {
+		bool hit = Collision::PolygonVsCapsule(m, b, a);
+		if (hit) {
+			Body* tmp = m->bodyA;
+			m->bodyA = m->bodyB;
+			m->bodyB = tmp;
+			m->normal = m->normal * -1.0f;
+		}
+		return hit;
+	}
+
 	return false;
+}
+float Collision::FindMaxSeparation(int& edgeIndex, const Polygon* polyA, const Body* bodyA, const Polygon* polyB, const Body* bodyB)
+{
+	int countA = polyA->GetVertexCount();
+	int countB = polyB->GetVertexCount();
+
+	// 1. 预先把多边形 B 的所有顶点转换到【世界坐标系】
+	Vector2 worldVertsB[Polygon::MAX_VERTICES];
+	float cosB = std::cos(bodyB->GetRotation());
+	float sinB = std::sin(bodyB->GetRotation());
+	Vector2 posB = bodyB->GetPosition();
+
+	for (int i = 0; i < countB; ++i) {
+		Vector2 v = polyB->GetVertex(i);
+		worldVertsB[i] = Vector2(
+			posB.getX() + (v.getX() * cosB - v.getY() * sinB),
+			posB.getY() + (v.getX() * sinB + v.getY() * cosB)
+		);
+	}
+	// 准备多边形 A 的旋转平移参数
+	float cosA = std::cos(bodyA->GetRotation());
+	float sinA = std::sin(bodyA->GetRotation());
+	Vector2 posA = bodyA->GetPosition();
+
+	float maxSeparation = -FLT_MAX;
+	int bestEdge = 0;
+
+	// 3. 遍历 A 的每一条边的法线 (SAT 候选轴)
+	for (int i = 0; i < countA; ++i)
+	{
+		// 【修复】SAT 轴必须是"边的外法线"，用预计算好的 GetNormal(i)；
+		// 之前把顶点方向 Normalize 当轴用，方向全错（矩形会得到 45 度斜轴）
+		Vector2 localN = polyA->GetNormal(i);
+		Vector2 normalA(
+			localN.getX() * cosA - localN.getY() * sinA,
+			localN.getX() * sinA + localN.getY() * cosA
+		);
+		// 获取边 i 的世界顶点 (端点作为平面基准点)
+		Vector2 localV = polyA->GetVertex(i);
+		Vector2 vertexA(
+			posA.getX() + (localV.getX() * cosA - localV.getY() * sinA),
+			posA.getY() + (localV.getX() * sinA + localV.getY() * cosA)
+		);
+
+		// 4. 在该法线上，寻找多边形 B 投影距离最小的点 (即扎入 A 最深的点)
+		float minSeparationForThisEdge = 1e30f;
+
+		for (int j = 0; j < countB; ++j) {
+			// 有向距离: (B_点 - A_面基准点) · 法线
+			float separation = (worldVertsB[j] - vertexA).Dot( normalA);
+			if (separation < minSeparationForThisEdge) {
+				minSeparationForThisEdge = separation;
+			}
+		}
+
+		// 5. 在所有的候选轴中，保留“分离度最大”的轴 (即穿透最浅的轴)
+		if (minSeparationForThisEdge > maxSeparation) {
+			maxSeparation = minSeparationForThisEdge;
+			bestEdge = i;
+		}
+	}
+	edgeIndex = bestEdge;
+	return maxSeparation;
+}
+int Collision::ClipSegmentToLine(ClipVertex vOut[2], const ClipVertex vIn[2], const Vector2& normal, float offset)
+{
+	int numOut = 0;
+	float d0 = normal.Dot(vIn[0].v) - offset;
+	float d1 = normal.Dot(vIn[1].v) - offset;
+
+	// 如果端点在直线的内侧 (有向距离 <= 0)
+	if (d0 <= 0.0f) vOut[numOut++] = vIn[0];
+	if (d1 <= 0.0f) vOut[numOut++] = vIn[1];
+
+	// 如果两个端点分布在直线两侧，求截断交点
+	if (d0 * d1 < 0.0f) {
+		float alpha = d0 / (d0 - d1);
+		vOut[numOut].v = vIn[0].v + (vIn[1].v - vIn[0].v) * alpha;
+		numOut++;
+	}
+	return numOut;
 }
 std::vector<Vector2> Collision::GetBoxWorldVertices(const Body* body)
 {

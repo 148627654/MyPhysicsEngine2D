@@ -21,6 +21,7 @@ public:
 	AABB ComputeAABB(Vector2 pos, float angle);
 	bool RayCast(RayCastOutput* output, RayCastInput& input,
 		const Vector2& position, float rotation);
+	inline Vector2 GetNormal(int i) const { return m_normals[i]; }
 private:
 	Vector2 m_vertices[MAX_VERTICES];
 	Vector2 m_normals[MAX_VERTICES];

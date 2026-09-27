@@ -48,10 +48,10 @@ MyPhysicsEngine2D/
 - [x] **Day 01: 材质系统 (Material) 与 触发器 (Trigger) 架构**
 - [x] **Day 02: 胶囊体碰撞 (Capsule Collider)**
 - [x] **Day 03: 通用凸多边形表示与惯性属性 (Convex Polygon)**
-- [ ] **Day 04: 多边形接触流形裁剪 (Sutherland-Hodgman Clipping)**
+- [x] **Day 04: 多边形接触流形裁剪 (Sutherland-Hodgman Clipping)**
 
 ### 第 2 阶段：生命周期与事件系统
-- [ ] **Day 05: 接触状态缓存与生命周期判定 (Contact Cache)**
+- [x] **Day 05: 接触状态缓存与生命周期判定 (Contact Cache)**
 - [ ] **Day 06: 观察者模式与事件总线 (Event System)**
 
 ### 第 3 阶段：约束与关节系统 (Joints & Constraints)
@@ -319,6 +319,255 @@ bool Polygon::RayCast(RayCastOutput* output, RayCastInput& input, const Vector2&
 [INFO] CentroidShift: centroid=(-0.000000, -0.000000) -> PASS
 [INFO] Validation: rejectCW=1 rejectConcave=1 rejectFewVerts=1 -> PASS
 [INFO] RayCast: hit=1 t=0.329870 normal=(-0.951057, -0.309017) dot(n,edge)=0.000000 -> PASS
+[INFO] >>> ALL TESTS PASSED <<<
+```
+---
+这里是为你量身编写的 **V3 - Day 04 任务总结（README 增补内容）**。
+
+你可以直接将其复制并追加到你的 `README.md` 中，同时将进度表中的 `Day 04` 勾选为 `[x]`：
+
+---
+
+## 🚀 Day 04 进展：Sutherland-Hodgman 接触流形裁剪与多边形碰撞解算
+
+### 1. 技术核心与物理突破：双点接触线段化
+在物理引擎中，如果碰撞只能生成 1 个点，平躺的刚体会因为缺乏力矩支撑而发生高频振荡或倾覆。今天我们攻克了多边形碰撞最具含金量的核心——**基于 SAT 分离轴判定与 Sutherland-Hodgman 算法的高精度接触流形裁剪**：
+
+#### A. 双向 SAT 仲裁与参考面提取
+* **双重否决机制**：调用 `FindMaxSeparation` 进行双向测试（A 测 B 与 B 测 A），任意轴存在分离（$\text{sep} > 0$）即剪枝退出。
+* **参考面 (Reference) 仲裁**：比较两者的穿透深度，选取穿透更浅的轴所在多边形作为参考面，另一方作为附着面。引入 `flip` 标志位确保法向始终严格由 BodyA 指向 BodyB。
+
+#### B. Sutherland-Hodgman 三道半平面裁剪流水线
+附着边线段进入裁剪流水线后，经受参考边构筑的三个半空间层层截断：
+1. **左侧切面**：截断超出参考边起点的悬空线段。
+2. **右侧切面**：截断超出参考边终点的悬空线段。
+3. **正面深度测量**：计算剩余端点沿参考面法向的有向深度，舍弃未侵入点（$\text{depth} \le 0$），保留有效接触点（至多 2 个）。
+
+```text
+       ┌───────────────┐
+       │ Incident Poly │
+       └───[ I1─────I2 ]───  <--- 附着边 (Incident Edge)
+             │       │
+      ←──────[ R1───R2 ]──────→  <--- 参考边 (Reference Edge，构筑左右侧面与正面)
+       ┌─────────────────┐
+       │ Reference Poly  │
+       └─────────────────┘
+```
+
+---
+
+### 2. 核心算法验证与物理表现
+
+#### ① 面面接触与双点力偶支撑 (`FaceFace`)
+* **工况**：两个宽 2 高 4 的矩形多边形垂直上下叠放，穿透量 $0.05$。
+* **实测输出**：`hit=1 count=2 c0=(-1.000000, 0.950000) c1=(1.000000, 0.950000) n=(0.000000, 1.000000)`。
+* **物理意义**：算法在接触面上精确截出了长为 $2.0$ 的水平接触线段，法线垂直向上。求解器在两端分别施加冲量，形成抵抗倾覆的力偶，**多边形自此能够稳如磐石地平躺堆叠**。
+
+#### ② 角面接触自然退化 (`CornerFace`)
+* **工况**：上方多边形倾斜 $45^\circ$（尖角朝下）撞击水平多边形。
+* **实测输出**：`hit=1 count=1 c0=(-0.000000, 0.950000)`。
+* **物理意义**：算法自动在第三道正面裁剪中舍弃了悬空的顶点，自然退化为单点支撑，接触点精准锁定在尖角顶点。
+
+#### ③ 错位重叠裁剪 (`ClippedOverlap`)
+* **工况**：上方多边形向右错位平移半个身位后压在下方多边形上。
+* **实测输出**：`count=2 c0=(0.000000, 0.950000) c1=(1.000000, 0.950000)`。
+* **物理意义**：左侧悬空端点被第一道侧平面精准剪断，生成的 2 个接触点严格收敛在 $[0, 1]$ 的真实几何重叠区间内，杜绝了“空中假着力点”。
+
+#### ④ 多边形与圆碰撞 (`PolygonVsCircle`)
+* **工况**：小球落在 $45^\circ$ 斜面上。
+* **实测输出**：`contact=1 n=(-0.707107, 0.707107) dot(n,face)=0.000000 minVx=-2.858334`。
+* **物理意义**：法线正交积严格等于 $0.0$，且在冲量解算下小球获得了 $-2.86\,\text{m/s}$ 的横向反弹初速度，混合碰撞动力学验证通过。
+
+---
+
+### 3. 开发复盘：Day 04 攻克的工程死穴
+
+#### **问题 A：嵌套结构体的“自上而下”声明依赖**
+- **现象**：`FindIncidentEdge` 编译报错 `“ClipVertex”: 未声明的标识符`。
+- **根因**：C++ 类内部函数参数所依赖的嵌套类型必须在其上方完成定义。
+- **解决**：调整声明顺序，将 `struct ClipVertex` 置于所有成员函数声明之前。
+
+#### **问题 B：SAT 测量中的“绝对值”逻辑陷阱**
+- **现象**：圆心深穿透进多边形内部时，系统误判为“圆在外部未碰撞”。
+- **根因**：计算圆心到边的距离时误加了 `std::abs`，导致背面原本深深在内侧的负有向距离（如 $-10.0$）被反转为 $+10.0$，触发了分离轴剪枝。
+- **解决**：彻底移除绝对值运算，使用纯正的带符号有向距离进行 SAT 极值筛选。
+
+---
+
+### 4. 如何验证
+运行 `tests/PolygonCollisionTests.cpp`。当前已全绿通过以下核心流形与几何测试：
+- ✅ **面面平躺测试**：精准生成 2 接触点，法线水平垂直无偏移。
+- ✅ **角面点接触测试**：自适应退化为 1 接触点。
+- ✅ **错位裁剪测试**：悬空端点被双侧平面精准拦截截断。
+- ✅ **多边形与圆混合对撞**：Voronoi 面/角区域判定生效，斜面反弹法向严格守恒。
+
+**Day 04 运行快照：**
+```text
+[INFO] >>> Starting V3 004: Polygon Collision Test...
+[INFO] FaceFace: hit=1 count=2 c0=(-1.000000,0.950000) c1=(1.000000,0.950000) n=(0.000000,1.000000) -> PASS
+[INFO] CornerFace: hit=1 count=1 c0=(-0.000000,0.950000) -> PASS
+[INFO] ClippedOverlap: count=2 c0=(0.000000,0.950000) c1=(1.000000,0.950000) -> PASS
+[INFO] PolygonVsCircle: contact=1 n=(-0.707107,0.707107) dot(n,face)=0.000000 minVx=-2.858334 -> PASS
+[INFO] >>> ALL TESTS PASSED <<<
+```
+这里是为你量身编写的 **V3 - Day 05 任务总结（README 增补内容）**。
+
+你可以直接将其复制并追加到你的 `README.md` 中，同时将进度表中的 `Day 05` 勾选为 `[x]`：
+
+---
+
+## 🚀 Day 05 进展：接触状态缓存器 (Contact Cache) 与 时序生命周期状态机
+
+### 1. 技术核心：为物理世界注入“时序记忆”
+在传统的离散物理模拟中，碰撞检测是“用完即扔”的无状态计算。但对于上层的游戏逻辑与事件系统而言，业务强依赖于状态变迁（如击中音效需在刚碰上时播放一次、持续燃烧伤害需在接触期间每秒结算、离开地面才触发起跳状态）。
+
+今天我们实现了完整的 **接触状态缓存器 (`ContactManager`)**，将物理世界从“瞬时判定”升维为“具备跨帧时序记忆的状态机”：
+
+#### A. 无序碰撞对 64 位整型压缩 (`ContactKey`)
+对于任意两个刚体 $A$ 与 $B$，无论遍历顺序如何，它们之间的物理接触在逻辑上是**绝对等价且唯一**的：
+* 提取两刚体全局唯一自增标识 `idA` 与 `idB`，按大小排序消除次序性：
+  $$\text{id}_1 = \min(\text{idA}, \text{idB}), \quad \text{id}_2 = \max(\text{idA}, \text{idB})$$
+  $$\text{Key} = (\text{uint64\_t}(\text{id}_1) \ll 32) \mid \text{uint64\_t}(\text{id}_2)$$
+* 实现了哈希表内部 $O(1)$ 复杂度的查找与天然碰撞去重。
+
+#### B. 双缓冲集合差集算法 (Set-Difference State Machine)
+维护上一帧接触集合 $S_{\text{prev}}$ 与当前帧接触集合 $S_{\text{curr}}$，通过三向集合差集，自动且无遗漏地推导出三态生命周期：
+* **`Enter`（初次接触）**：$S_{\text{curr}} \setminus S_{\text{prev}}$（本帧新出现，上帧未记录）。
+* **`Stay`（持续保持）**：$S_{\text{curr}} \cap S_{\text{prev}}$（本帧与上帧连续重叠）。
+* **`Exit`（脱离接触）**：$S_{\text{prev}} \setminus S_{\text{curr}}$（上帧尚存，本帧检测已分离）。发生脱离时完整保留上一帧的最后流形记忆，使得外部能够准确读取脱离瞬态。
+
+---
+
+### 2. 核心架构与四大安全管线实现
+
+在 `ContactManager` 内部确立了清晰的四阶管线：
+1. **`AddContact`（窄相实时归档）**：窄相检测成功后即刻打包刚体指针、几何流形与 `isTrigger` 标识写入 $S_{\text{curr}}$。
+2. **`UpdateStates`（生命周期集中裁决）**：在冲量解算前统一跑完双向差集对比，将所有裁定好的记录扁平化写入 `m_lifecycleRecords`。
+3. **`EndFrame`（零拷贝轮转）**：通过 C++11 `std::move` 实现哈希表底层桶指针的 $O(1)$ 零拷贝所有权交接，杜绝深拷贝消耗。
+4. **`OnBodyDestroyed`（野指针拆弹安全门）**：当刚体被外界销毁时，以安全迭代器擦除该 Body 关联的所有当前、历史与待派发记录，彻底根除 0xC0000005 悬挂指针崩溃风险。
+
+---
+
+### 3. 开发复盘：Day 05 攻克的暗坑
+
+#### **问题 A：布尔守卫条件的“德摩根定律陷阱”**
+- **现象**：`AddContact` 的指针防御失效，传入空指针时没有提前返回，直接崩溃。
+- **根因**：写出了 `if (!bodyA && !bodyB && bodyA != bodyB) return;`。只有两者同时为空且自己不等于自己时才触发，导致条件恒为假。
+- **解决**：改写为标准的析取守卫语句 `if (!bodyA || !bodyB || bodyA == bodyB) return;`。
+
+#### **问题 B：范围 for 循环中的迭代器失效（Crash）**
+- **现象**：在 `OnBodyDestroyed` 中遍历哈希表并调用 `erase(key)` 时，程序在下一轮迭代突发野指针异常。
+- **根因**：C++ 范围 for 循环在末尾隐式执行 `++it`，删除当前节点后已导致迭代器悬挂失效。
+- **解决**：重构为经典显式迭代器循环，在删除分支使用 `it = map.erase(it)` 接住下一个有效迭代器指针。
+
+#### **问题 C：类型默认构造函数被编译器隐式删除 (E1790)**
+- **现象**：定义 `ContactRecord record;` 触发编译错误，提示默认构造函数是“已删除的函数”。
+- **根因**：成员变量 `Manifold` 编写了自定义构造函数，导致编译器自动注销了无参默认构造。
+- **解决**：在 `Manifold.h` 中显式补充 `Manifold() = default;`。
+
+---
+
+### 4. 测试验证与数据剖析 (Verification)
+
+运行 `tests/ContactCacheTests.cpp`。当前已全绿通过以下核心状态机单元测试：
+
+#### ① 完整生命周期流转 (`Lifecycle Enter->Stay->Exit`)
+* **验证场景**：小球自然下落撞击地面，随后被代码手动移走。
+* **状态记录**：第 1 帧精准捕获 `Enter`；随后连续多帧稳定输出 `Stay`；分离瞬间无缝捕获 `Exit`；下一帧彻底清空。三态变迁无任何重叠或漏报。
+
+#### ② 触发器时序透传 (`TriggerEvent`)
+* **实测输出**：`enter=1 stay=13 exit=1 allTrigger=1 minVy=-19.599997`。
+* **物理意义**：刚体穿过 Trigger 区域，在 13 帧的穿透时间内持续产生 `Stay` 状态，离开时产生 `Exit`。且因为求解器旁路生效，小球垂直速度在重力下平滑加速到 $-19.6\,\text{m/s}$，动能零损耗。
+
+#### ③ 多对独立状态隔离性 (`Isolation`)
+* **实测输出**：`enterAB=1 stayAB=59 enterBC=1 exitBC=1 A_y=1.470929`。
+* **物理意义**：A-B 两物体在长达 59 帧的静止堆叠中持续保持 `Stay`。中途 C 物体切入碰撞 B（触发 `enterBC`）随后离开（触发 `exitBC`），A-B 的状态机完全不受邻居干扰，物体 A 始终稳如磐石停在 $Y=1.47$。
+
+**Day 05 运行快照：**
+```text
+[INFO] >>> Starting V3 005: Contact Event Test...
+[INFO] Lifecycle Enter->Stay->Exit: PASS
+[INFO] TriggerEvent: enter=1 stay=13 exit=1 allTrigger=1 minVy=-19.599997 -> PASS
+[INFO] Isolation: enterAB=1 stayAB=59 enterBC=1 exitBC=1 A_y=1.470929 -> PASS
+[INFO] >>> ALL TESTS PASSED <<<
+```
+这里是为你量身编写的 **V3 - Day 06 任务总结（README 增补内容）**。
+
+你可以直接将其复制并追加到你的 `README.md` 中，同时将顶部进度表中的 `Day 06` 勾选为 `[x]`（标志着第二阶段：生命周期与事件系统圆满收官！）：
+
+---
+
+## 🚀 Day 06 进展：观察者模式与事件派发总线 (Event System)
+
+### 1. 技术核心与架构设计：打通业务交互的“最后一公里”
+至 Day 05 为止，引擎底层已具备了高精度的碰撞流形与状态机推导能力，但外部游戏代码依然无法直接感知。今天我们基于**观察者模式（Observer Pattern）**构建了一套解耦的**事件派发总线**，正式宣告引擎从“纯动力学模拟器”蜕变为“具备业务感知能力的游戏级物理引擎”：
+
+#### A. 延迟派发架构与重入防御 (Deferred Event Dispatch)
+在物理引擎开发中，最经典的崩溃莫过于用户在回调函数内部执行结构变更（如 `OnCollisionEnter` 中调用 `DestroyBody` 销毁怪物）：
+* **同步派发死穴**：如果在求解循环（Island Solver）内部直接调用回调，销毁刚体会导致当前迭代器瞬间悬挂，引发 0xC0000005 内存访问越界。
+* **延迟派发流水线**：
+  整个 `World::Step` 物理计算全流程（积分 $\rightarrow$ 宽相 $\rightarrow$ CCD $\rightarrow$ 岛屿求解）严禁触发任何外部回调。
+  直到所有力学计算**彻底落幕**，才在帧末通过 `DispatchContactEvents()` 集中派发事件。即使上层在回调中随心所欲地 `DestroyBody` 或 `CreateBody`，底层计算管线依然坚如磐石！
+
+#### B. 触发器语义归一化 (Semantic Normalization)
+在无序碰撞对 $(A, B)$ 中，触发器可能是 $A$ 也可能是 $B$。为了向游戏开发者提供最直观的 API，我们在封装 `TriggerEvent` 时进行了语义提取：
+* 自动判定并将触发器赋予 `triggerBody`，受测者赋予 `otherBody`。
+* 开发者无需写繁琐的 `isTrigger` 双向判断，直接取用即可。
+
+---
+
+### 2. 核心架构与事件生命周期管线
+
+```text
+[物理计算全闭环] ──► Island Solver 求解结束，冲量与位置全部收敛
+                             │
+                             ▼
+[事件分发总线]   ──► World::DispatchContactEvents()
+                     ├─ 提取 ContactManager 本帧生命周期记录
+                     ├─ 遍历判定 isTrigger，分流装配 CollisionEvent / TriggerEvent
+                     └─ 触发外部注册的 ContactListener 虚接口
+                             │
+                             ▼
+[帧末状态交接]   ──► ContactManager::EndFrame() (双缓冲零拷贝移交)
+```
+
+---
+
+### 3. 开发复盘：Day 06 攻克的工程死穴
+
+#### **问题 A：派发时机过早导致的“求解器踩踏崩溃”**
+- **现象**：在回调中销毁刚体后，程序在 `BuildAndSolveIslands` 阶段发生空指针异常。
+- **根因**：原先事件更新位于第 2.5 步，在此处派发事件导致刚体在岛屿解算前被销毁，解算器读到了已被 `delete` 的刚体。
+- **解决**：确立“延迟派发”黄金法则，将 `DispatchContactEvents()` 严格后置在第 5 步（Island Solver 结束后），确保力学流程完全闭环。
+
+#### **问题 B：多态虚基类的默认空实现**
+- **设计考量**：在 `ContactListener` 中为 6 个纯虚接口全部赋予默认空函数体 `{}`。
+- **收益**：上层业务开发者只需按需重写自己关心的事件（如只重写 `OnTriggerEnter`），无需为了监听单一事件而被迫写满 6 个空函数。
+
+---
+
+### 4. 测试验证与数据剖析 (Verification)
+
+运行 `tests/EventSystemTests.cpp`。当前已全绿通过以下核心事件总线测试：
+
+#### ① 碰撞实体回调捕获 (`BounceCallback`)
+* **实测输出**：`enter=1 exit=1 n=(-0.000000, 1.000000) -> PASS`。
+* **物理意义**：小球砸向地面并弹起，监听器在碰撞瞬间精确捕获到 1 次 `OnCollisionEnter`，反弹腾空瞬间捕获到 1 次 `OnCollisionExit`。法线精准保持为垂直地面的 `(0, 1)`，无任何多余的虚假事件扰动。
+
+#### ② 实体碰撞与触发器完全隔离 (`TriggerIsolation`)
+* **实测输出**：`triggerEnter=1 triggerExit=1 collisionEnter=0 -> PASS`。
+* **物理意义**：小球高速穿过金币传感器（Trigger），成功派发 `OnTriggerEnter` 与 `OnTriggerExit`，而实体物理碰撞 `OnCollisionEnter` 触发计数严格为 0，两者事件流泾渭分明，绝不串门。
+
+#### ③ 死斗大杀器：回调内安全自毁 (`SafeDestruction`)
+* **实测输出**：`destroyCalls=1 bodies 2->1 -> PASS`。
+* **物理意义**：在 `OnCollisionEnter` 回调内部直接执行 `world->DestroyBody(event.bodyB)`！引擎平稳执行至帧末，世界刚体数平滑由 2 减至 1，无任何内存崩溃或野指针泄漏，**高强度验证了延迟派发架构的绝对安全性**！
+
+**Day 06 运行快照：**
+```text
+[INFO] >>> Starting V3 006: Contact Callback Test...
+[INFO] BounceCallback: enter=1 exit=1 n=(-0.000000,1.000000) -> PASS
+[INFO] TriggerIsolation: triggerEnter=1 triggerExit=1 collisionEnter=0 -> PASS
+[INFO] SafeDestruction: destroyCalls=1 bodies 2->1 -> PASS
 [INFO] >>> ALL TESTS PASSED <<<
 ```
 ---

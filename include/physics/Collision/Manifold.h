@@ -6,6 +6,7 @@
 struct Manifold
 {
 public:
+	Manifold() = default;
 	Manifold(Body* a, Body* b)
 		: bodyA(a), bodyB(b), normal(0, 0), penetration(0), contactCount(0){
 		impulseN[0] = impulseN[1] = 0.0f;

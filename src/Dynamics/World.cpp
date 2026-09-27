@@ -5,6 +5,8 @@
 #include "../Collision/TimeOfImpact.h"
 #include "../../include/physics/Utils/Profiler.h"
 void World::Step(float dt) {
+    // 处理上一帧之后外部（如回调中）调用的 DestroyBody
+    FlushDestroyQueue();
     m_profiler.BeginFrame();
     // --- 统计计数器 ---
     int awakeCount = 0;
@@ -49,7 +51,22 @@ void World::Step(float dt) {
         syncBP(dt);
         UpdateAllContactsAndTOI(dt);
     }
-    
+
+    {
+        ScopedTimer timer(m_profiler, "2.5 Contact Events");
+        // 接触生命周期事件：收集本帧所有正在接触的对，交给 ContactManager 推导 Enter/Stay/Exit
+        for (auto& pair : m_contactMap) {
+            Contact* c = pair.second;
+            if (c->IsTouching()) {
+                m_contactManager.AddContact(c->m_bodyA, c->m_bodyB, c->GetManifold(), c->IsTrigger());
+            }
+        }
+        m_contactManager.UpdateStates();
+
+        // 清理已经完全分离的接触对（AABB 不再重叠），防止接触对永久堆积
+        DestroySeparatedContacts();
+    }
+
     {
         ScopedTimer timer(m_profiler, "3. CCD");
         // --- 4. [CCD 核心迭代] ---
@@ -111,11 +128,67 @@ void World::Step(float dt) {
         // 5. 最后执行离散解算（处理普通碰撞和堆叠）
         BuildAndSolveIslands(dt);
     }
+
+    {
+        ScopedTimer timer(m_profiler, "5. Event Dispatch");
+        DispatchContactEvents();
+    }
+
+    // 帧末尾：处理延迟销毁队列（回调中 DestroyBody 的物体在此刻真正移除）
+    FlushDestroyQueue();
+
+    // 帧末尾：把本帧接触集移交为"上一帧"，供下一帧推导 Enter/Stay/Exit
+    m_contactManager.EndFrame();
     // 结束记录整个 Step
     m_profiler.Stop("Step Total");
 
     // [帧结束] 计算本帧平均值
     m_profiler.EndFrame();
+}
+
+void World::DispatchContactEvents() {
+    // 如果外部没有注册监听器，直接返回，零性能损耗
+    if (m_contactListener == nullptr) return;
+
+    const auto& records = m_contactManager.GetLifecycleRecords();
+    for (const auto& record : records) {
+        if (record.isTrigger) {
+            // --- 触发器事件打包与分发 ---
+            TriggerEvent e;
+            // 语义归一化：区分哪个是触发器传感器
+            if (record.bodyA->GetShape()->isTrigger) {
+                e.triggerBody = record.bodyA;
+                e.otherBody = record.bodyB;
+            }
+            else {
+                e.triggerBody = record.bodyB;
+                e.otherBody = record.bodyA;
+            }
+
+            switch (record.state) {
+            case ContactState::Enter: m_contactListener->OnTriggerEnter(e); break;
+            case ContactState::Stay:  m_contactListener->OnTriggerStay(e);  break;
+            case ContactState::Exit:  m_contactListener->OnTriggerExit(e);  break;
+            }
+        }
+        else {
+            // --- 物理实体碰撞事件打包与分发 ---
+            CollisionEvent e;
+            e.bodyA = record.bodyA;
+            e.bodyB = record.bodyB;
+            e.normal = record.manifold.normal;
+            for (int i = 0; i < record.manifold.contactCount; ++i) {
+                e.contacts.push_back(record.manifold.contacts[i]);
+            }
+            e.maxImpulse = 0.0f; // 如果解算器有记录冲量可填入
+
+            switch (record.state) {
+            case ContactState::Enter: m_contactListener->OnCollisionEnter(e); break;
+            case ContactState::Stay:  m_contactListener->OnCollisionStay(e);  break;
+            case ContactState::Exit:  m_contactListener->OnCollisionExit(e);  break;
+            }
+        }
+    }
 }
 
 void World::AddContactToGraph(Contact* c) {
@@ -177,6 +250,9 @@ void World::SolveTOI(Contact* contact, float dt) {
 
 void World::RemoveBody(Body* body) {
     if (body == nullptr) return;
+
+    // 通知接触管理器清除所有涉及该 Body 的历史缓存，杜绝野指针
+    m_contactManager.OnBodyDestroyed(body);
 
     // 1. 【核心修复】：从碰撞图中彻底抹除该物体
     ContactEdge* ce = body->getContactList();
@@ -427,4 +503,43 @@ void World::UpdateBroadPhase(float dt) {
         AABB bpAABB = b->IsBullet() ? b->GetSweptAABB(dt) : b->GetAABB();
         m_broadPhase.MoveProxy(b->getProxyId(), bpAABB, b->velocity * dt);
     }
+}
+
+void World::DestroySeparatedContacts() {
+    // 销毁已经完全分离的接触对（形状不接触且 AABB 不再重叠），
+    // 否则 m_contactMap 会永久堆积，"接触对数量清零"永远不可能发生
+    for (auto it = m_contactMap.begin(); it != m_contactMap.end();) {
+        Contact* c = it->second;
+        Body* bA = c->m_bodyA;
+        Body* bB = c->m_bodyB;
+        if (!c->IsTouching() && !Collision::AABBvsAABB(bA->GetAABB(), bB->GetAABB())) {
+            RemoveContactFromGraph(c);
+            delete c;
+            it = m_contactMap.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+}
+
+void World::DestroyBody(Body* body) {
+    // 延迟销毁：只是入队，绝不在回调执行中途碰任何数据结构。
+    // 真正移除在 Step 末尾的 FlushDestroyQueue() 中完成
+    if (body == nullptr) return;
+
+    // 去重，防止重复入队导致 double delete
+    for (Body* b : m_destroyQueue) {
+        if (b == body) return;
+    }
+    m_destroyQueue.push_back(body);
+}
+
+void World::FlushDestroyQueue() {
+    if (m_destroyQueue.empty()) return;
+
+    for (Body* body : m_destroyQueue) {
+        RemoveBody(body);
+    }
+    m_destroyQueue.clear();
 }

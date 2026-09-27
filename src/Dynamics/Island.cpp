@@ -20,11 +20,13 @@ void IsLand::Solve(const TimeStep& step, const Vector2& gravity) {
         float linearVelocitySq = b->GetVelocity().LengthSquared();
         float angularVelocitySq = b->getAngularVelocity() * b->getAngularVelocity();
 
-        // 【修复】仅当存在实体接触（非触发器）时才允许速度归零。
+        // 【修复】仅当存在"正在接触"的实体接触（非触发器）时才允许速度归零。
         // 否则自由落体/抛射体在初始低速阶段每帧被清零，永远无法加速（从静止下落不动的 bug）
+        // 注意必须检查 IsTouching()：宽相的肥 AABB 会在形状真正接触前就创建 Contact，
+        // 只查 !IsTrigger() 会把"尚未接触"的接触当成实体接触，球照样被冻结
         bool hasSolidContact = false;
         for (ContactEdge* ce = b->getContactList(); ce != nullptr; ce = ce->next) {
-            if (!ce->contact->IsTrigger()) { hasSolidContact = true; break; }
+            if (!ce->contact->IsTrigger() && ce->contact->IsTouching()) { hasSolidContact = true; break; }
         }
 
         if (hasSolidContact && linearVelocitySq < Settings::LinearSleepThreshold * 0.5f) {

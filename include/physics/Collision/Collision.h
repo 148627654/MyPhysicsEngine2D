@@ -1,6 +1,8 @@
 #pragma once // 记得加上这个，防止重复包含
 #include "Manifold.h"
 #include <Capsule.h>
+#include "Polygon.h"
+#include <Collision.h>
 struct Projection {
     float min;
     float max;
@@ -22,7 +24,29 @@ public:
     static bool CapsuleVsBox(Manifold* m, Body* capsuleBody, Body* boxBody);
     // 点 P 到线段 [A, B] 的最近点（公开，供测试与外部使用）
     static Vector2 ClosestPointOnSegment(const Vector2& p, const Vector2& a, const Vector2& b);
+    static bool PolygonVsPolygon(Manifold* m, Body* a, Body* b);
+    static bool PolygonVsCircle(Manifold* m, Body* polyBody, Body* circleBody);
+    static bool PolygonVsCapsule(Manifold* m, Body* polyBody, Body* boxBody);
+
+    // Sutherland-Hodgman 裁剪用的顶点结构
+    struct ClipVertex {
+        Vector2 v;
+        float separation;
+    };
+
+    static void FindIncidentEdge(ClipVertex out[2], const Polygon* incPoly, const Body* incBody,
+        const Vector2& refNormal);
+
+    
 private:
+    // SAT 核心：寻找 A 在 B 上的最大分离轴（最小穿透）
+    static float FindMaxSeparation(int& edgeIndex, const Polygon* polyA, const Body* bodyA,
+        const Polygon* polyB, const Body* bodyB);
+
+    // 用一条线段/半平面裁剪另一条线段
+    static int ClipSegmentToLine(ClipVertex vOut[2], const ClipVertex vIn[2],
+        const Vector2& normal, float offset);
+
     static std::vector<Vector2> GetBoxWorldVertices(const Body* body);
     // 获取矩形在世界坐标系下的 X 轴方向（指向“右”侧）
     static Vector2 GetBodyAxisX(const Body* body) {
