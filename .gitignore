@@ -1,0 +1,16 @@
+# Visual Studio 本地状态
+.vs/
+*.user
+MyPhysic.*/
+*.VC.db
+*.VC.opendb
+
+# 工程/解决方案文件（不上传）
+MyPhysicsEngine2D.*
+
+# 构建产物
+x64/
+output/
+
+# Claude 会话数据
+.claude/

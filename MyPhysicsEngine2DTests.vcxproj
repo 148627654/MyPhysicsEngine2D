@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GoogleTest 单元测试工程
+  - 编译：引擎 src + vendored googletest + googleTest/*.cpp 测试用例
+  - PostBuild 自动运行测试：测试失败 => 构建失败（MSB3073）
+  - 新增测试：在 googleTest/ 下新建 V3_xxx.cpp，并在此文件的 ClCompile 里加一行
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{8F3C2D1A-5B6E-4A7C-9D0E-1F2A3B4C5D6E}</ProjectGuid>
+    <RootNamespace>MyPhysicsEngine2DTests</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>D:\Cpp\MyPhysicsEngine2D\include\physics\Utils;D:\Cpp\MyPhysicsEngine2D\include\physics\Dynamics;D:\Cpp\MyPhysicsEngine2D\include\physics\Collision;D:\Cpp\MyPhysicsEngine2D\include\physics\Common;D:\Cpp\MyPhysicsEngine2D\include\physics\Events;D:\Cpp\MyPhysicsEngine2D\docs;D:\Cpp\MyPhysicsEngine2D\googleTest\gtest\include;D:\Cpp\MyPhysicsEngine2D\googleTest\gtest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <PostBuildEvent>
+      <Message>Running GoogleTest suite (fail = build error)...</Message>
+      <Command>"$(TargetPath)" --gtest_brief=1 --gtest_color=no</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Collision\AABB.cpp" />
+    <ClCompile Include="src\Collision\Box.cpp" />
+    <ClCompile Include="src\Collision\BroadPhase.cpp" />
+    <ClCompile Include="src\Collision\Capsule.cpp" />
+    <ClCompile Include="src\Collision\Circle.cpp" />
+    <ClCompile Include="src\Collision\Collision.cpp" />
+    <ClCompile Include="src\Collision\Contact.cpp" />
+    <ClCompile Include="src\Collision\DynamicTree.cpp" />
+    <ClCompile Include="src\Collision\Polygon.cpp" />
+    <ClCompile Include="src\Collision\TimeOfImpact.cpp" />
+    <ClCompile Include="src\Common\Vector2.cpp" />
+    <ClCompile Include="src\Dynamics\Body.cpp" />
+    <ClCompile Include="src\Dynamics\DistanceJoint.cpp" />
+    <ClCompile Include="src\Dynamics\ContactManager.cpp" />
+    <ClCompile Include="src\Dynamics\Island.cpp" />
+    <ClCompile Include="src\Dynamics\Joint.cpp" />
+    <ClCompile Include="src\Dynamics\RevoluteJoint.cpp" />
+    <ClCompile Include="src\Dynamics\Solver.cpp" />
+    <ClCompile Include="src\Dynamics\SpringJoint.cpp" />
+    <ClCompile Include="src\Dynamics\World.cpp" />
+    <ClCompile Include="src\Utils\CSVExporter.cpp" />
+    <ClCompile Include="src\Utils\Logger.cpp" />
+    <ClCompile Include="src\Utils\Profiler.cpp" />
+    <ClCompile Include="googleTest\gtest\src\gtest-all.cc" />
+    <ClCompile Include="googleTest\gtest\src\gtest_main.cc" />
+    <ClCompile Include="googleTest\V3_001.cpp" />
+    <ClCompile Include="googleTest\V3_002.cpp" />
+    <ClCompile Include="googleTest\V3_003.cpp" />
+    <ClCompile Include="googleTest\V3_004.cpp" />
+    <ClCompile Include="googleTest\V3_005.cpp" />
+    <ClCompile Include="googleTest\V3_006.cpp" />
+    <ClCompile Include="googleTest\V3_007.cpp" />
+    <ClCompile Include="googleTest\V3_008.cpp" />
+    <ClCompile Include="googleTest\V3_009.cpp" />
+    <ClCompile Include="googleTest\V3_010.cpp" />
+    <ClCompile Include="googleTest\V3_011.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

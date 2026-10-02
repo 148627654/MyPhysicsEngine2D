@@ -1,0 +1,134 @@
+// GoogleTest 版 V3/003：Polygon 测试
+// 移植自 tests/V3/003.cpp，场景逻辑原样保留，断言改为 gtest 宏
+#include <gtest/gtest.h>
+#include "Body.h"
+#include "Polygon.h"
+#include "Box.h"
+#include "Logger.h"
+#include <cmath>
+
+// 向量近似相等判断
+static bool Near(const Vector2& a, const Vector2& b, float tol) {
+    return std::abs(a.getX() - b.getX()) < tol && std::abs(a.getY() - b.getY()) < tol;
+}
+
+// 从内部顶点重算质心 (顶点已质心归零时结果应约为 (0,0))
+static Vector2 ComputeCentroid(const Polygon& poly) {
+    Vector2 centroid(0.0f, 0.0f);
+    float doubleArea = 0.0f;
+    int n = poly.getVertexCount();
+    for (int i = 0; i < n; ++i) {
+        const Vector2& p1 = poly.getVertex(i);
+        const Vector2& p2 = poly.getVertex((i + 1) % n);
+        float c = Vector2::cross(p1, p2);
+        doubleArea += c;
+        centroid += (p1 + p2) * c;
+    }
+    return centroid * (1.0f / (3.0f * doubleArea)); // sum/(6A) = sum/(3*doubleArea)
+}
+
+// --- 场景 1: Box 与 Polygon 的等价性对照 ---
+// Box 宽高 (2,4)、密度 1.5；把 4 个角点喂给 Polygon，两者面积/质量/惯量必须一致
+TEST(V3_003, BoxPolygonEquivalence) {
+    Box box(2.0f, 4.0f);
+    MassData boxMass = box.computeMass(1.5f); // 理论值: mass=12, inertia=20
+
+    // 4 个矩形角点 (逆时针): (-1,-2) (1,-2) (1,2) (-1,2)
+    Vector2 corners[4] = {
+        Vector2(-1.0f, -2.0f), Vector2(1.0f, -2.0f),
+        Vector2(1.0f, 2.0f), Vector2(-1.0f, 2.0f)
+    };
+    Polygon poly;
+    bool setOk = poly.set(corners, 4);
+
+    // 断言 1: 面积严格等于 8.0，与 Box
+    EXPECT_TRUE(setOk);
+    EXPECT_NEAR(poly.getArea(), 8.0f, 1e-5f);
+    EXPECT_NEAR(poly.getArea(), box.getArea(), 1e-5f);
+
+    // 断言 2: 质心必须为 (0,0)（顶点已做质心归零平移）
+    Vector2 centroid = ComputeCentroid(poly);
+    EXPECT_LT(centroid.length(), 1e-4f);
+
+    // 断言 3: computeMass 的质量与转动惯量和 Box 误差 < 1e-5
+    MassData polyMass = poly.computeMass(1.5f);
+    EXPECT_NEAR(polyMass.mass, boxMass.mass, 1e-5f);
+    EXPECT_NEAR(polyMass.inertia, boxMass.inertia, 1e-5f);
+}
+
+// --- 场景 2: 质心平移修正 ---
+// 偏心三角形 (10,0) (13,0) (10,4)，质心理论值 (11, 4/3)；set() 后内部顶点应已平移使质心归零
+TEST(V3_003, CentroidShift) {
+    Vector2 tri[3] = {
+        Vector2(10.0f, 0.0f), Vector2(13.0f, 0.0f), Vector2(10.0f, 4.0f)
+    };
+    Polygon poly;
+    bool setOk = poly.set(tri, 3);
+
+    // 顶点平移后重算质心应归零
+    Vector2 centroid = ComputeCentroid(poly);
+    EXPECT_TRUE(setOk);
+    EXPECT_LT(centroid.length(), 1e-4f);
+
+    // 平移不改变面积: 底 3 高 4 的三角形面积 = 6
+    EXPECT_NEAR(poly.getArea(), 6.0f, 1e-5f);
+}
+
+// --- 场景 3: 凸性与逆时针拦截 ---
+// 顺时针顶点集、凹四边形（飞镖形）、非法顶点数都必须被 set() 拒绝
+TEST(V3_003, RejectsCWConcaveAndFewVerts) {
+    Polygon p1;
+    Polygon p2;
+    Polygon p3;
+
+    // 顺时针矩形 (0,0)->(0,4)->(4,4)->(4,0)：拐角叉积为负
+    Vector2 cw[4] = {
+        Vector2(0.0f, 0.0f), Vector2(0.0f, 4.0f), Vector2(4.0f, 4.0f), Vector2(4.0f, 0.0f)
+    };
+    EXPECT_FALSE(p1.set(cw, 4));
+
+    // 凹四边形（飞镖形）：(0.5,0.5) 凹进内部
+    Vector2 dart[4] = {
+        Vector2(0.0f, 0.0f), Vector2(2.0f, 0.0f), Vector2(0.5f, 0.5f), Vector2(0.0f, 2.0f)
+    };
+    EXPECT_FALSE(p2.set(dart, 4));
+
+    // 顶点数不足 3
+    Vector2 two[2] = { Vector2(0.0f, 0.0f), Vector2(1.0f, 0.0f) };
+    EXPECT_FALSE(p3.set(two, 2));
+}
+
+// --- 场景 4: 多边形射线投射 ---
+// 射线从外部水平射向正五边形（外接圆半径 2，顶点从 90 度起），应击中左侧边
+TEST(V3_003, RayCast) {
+    const int N = 5;
+    Vector2 verts[N];
+    for (int i = 0; i < N; ++i) {
+        float ang = (90.0f + 72.0f * i) * Settings::PAI / 180.0f;
+        verts[i] = Vector2(2.0f * std::cos(ang), 2.0f * std::sin(ang));
+    }
+    Polygon poly;
+    ASSERT_TRUE(poly.set(verts, N)); // set 失败则场景不成立，直接终止本用例
+
+    RayCastInput input;
+    input.p1 = Vector2(-5.0f, 0.0f);
+    input.p2 = Vector2(5.0f, 0.0f);
+    input.maxFraction = 1.0f;
+
+    RayCastOutput output;
+    bool hit = poly.rayCast(&output, input, Vector2(0.0f, 0.0f), 0.0f);
+
+    // 理论值：击中左侧边（162 度与 234 度顶点之间），击中点 x = -1.70130
+    // fraction = (5 - 1.70130) / 10 = 0.32987，法线指向 198 度方向
+    float expectedT = 0.32987f;
+    Vector2 expectedNormal(-0.95106f, -0.30902f);
+
+    EXPECT_TRUE(hit);
+    EXPECT_NEAR(output.fraction, expectedT, 1e-3f);
+    EXPECT_TRUE(Near(output.normal, expectedNormal, 1e-3f));
+
+    // 法线必须精准垂直于被击中边缘: n dot edgeDir = 0
+    Vector2 hitEdge = verts[2] - verts[1]; // 边 1 -> 2
+    float dot = output.normal.dot(hitEdge);
+    EXPECT_NEAR(dot, 0.0f, 1e-4f);
+}

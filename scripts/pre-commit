@@ -1,0 +1,54 @@
+#!/bin/sh
+# ============================================================
+# MyPhysicsEngine2D pre-commit 钩子
+#   1. 检查 googleTest/*.cpp 是否都已注册进 MyPhysicsEngine2DTests.vcxproj
+#      （未注册的新测试文件会静默不跑，这里直接拦截）
+#   2. MSBuild 构建测试工程 —— PostBuild 事件自动运行 GoogleTest 全量用例
+#   3. 任一测试失败 => 构建失败 => 阻止提交
+# 跳过：SKIP_TESTS=1 git commit ...
+# ============================================================
+
+if [ "$SKIP_TESTS" = "1" ]; then
+    echo "[pre-commit] SKIP_TESTS=1，跳过测试"
+    exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+PROJ="$REPO_ROOT/MyPhysicsEngine2DTests.vcxproj"
+
+# ---- 1. 未注册测试文件检查 ----
+UNREGISTERED=""
+for f in "$REPO_ROOT"/googleTest/*.cpp; do
+    [ -e "$f" ] || continue
+    base=$(basename "$f")
+    grep -q "googleTest\\\\$base" "$PROJ" || UNREGISTERED="$UNREGISTERED $base"
+done
+if [ -n "$UNREGISTERED" ]; then
+    echo "[pre-commit] 以下 googleTest 测试文件未注册到 MyPhysicsEngine2DTests.vcxproj，不会被执行：$UNREGISTERED"
+    echo "[pre-commit] 请在 vcxproj 的 ClCompile 列表添加 <ClCompile Include=\"googleTest\\<文件名>\" />"
+    echo "[pre-commit] 或 SKIP_TESTS=1 git commit 强制跳过。"
+    exit 1
+fi
+
+# ---- 2. 定位 MSBuild ----
+MSBUILD=""
+if [ -f "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" ]; then
+    MSBUILD=$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
+        -latest -products '*' -requires Microsoft.Component.MSBuild \
+        -find 'MSBuild\**\Bin\MSBuild.exe' 2>/dev/null | head -1)
+fi
+if [ -z "$MSBUILD" ] || [ ! -f "$MSBUILD" ]; then
+    echo "[pre-commit] 找不到 MSBuild，跳过测试（可改 scripts/pre-commit 中的路径）"
+    exit 0
+fi
+
+# ---- 3. 构建 + 运行测试 ----
+echo "[pre-commit] 构建并运行 GoogleTest 测试套件（MyPhysicsEngine2DTests, Debug|x64）..."
+"$MSBUILD" "$PROJ" -p:Configuration=Debug -p:Platform=x64 -v:m -nologo
+STATUS=$?
+if [ $STATUS -ne 0 ]; then
+    echo "[pre-commit] 测试未通过，提交被阻止。修复后重新提交；或 SKIP_TESTS=1 git commit 强制跳过。"
+    exit 1
+fi
+echo "[pre-commit] 全部测试通过"
+exit 0
