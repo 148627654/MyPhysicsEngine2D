@@ -79,7 +79,7 @@ void RevoluteJoint::initVelocityConstraints(float dt)
 		else {
 			C = angle - m_upperAngle; // 越界时为正，偏置为负 → 把角度推小
 		}
-		C = std::max(-0.2f, std::min(0.2f, C));
+		C = std::max(-0.5f, std::min(0.5f, C));
 		m_limitBias = -0.2f * C / dt;
 	}
 
@@ -227,15 +227,15 @@ bool RevoluteJoint::solvePositionConstraints()
 			float C = 0.0f;
 			if (m_limitState == LimitState::Equal) {
 				// 双向：把角度钳回 lower（= upper）
-				C = std::max(-0.2f, std::min(0.2f, angle - m_lowerAngle));
+				C = std::max(-0.5f, std::min(0.5f, angle - m_lowerAngle));
 			}
 			else if (m_limitState == LimitState::AtLower) {
 				// 单向：只修正负向越界（把角度推回 >= lower）
-				C = std::max(-0.2f, std::min(0.0f, angle - m_lowerAngle));
+				C = std::max(-0.5f, std::min(0.0f, angle - m_lowerAngle));
 			}
 			else {
 				// 单向：只修正正向越界（把角度推回 <= upper）
-				C = std::max(0.0f, std::min(0.2f, angle - m_upperAngle));
+				C = std::max(0.0f, std::min(0.5f, angle - m_upperAngle));
 			}
 
 			if (std::abs(C) > 1e-6f) {

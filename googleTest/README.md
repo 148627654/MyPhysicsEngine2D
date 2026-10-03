@@ -1,6 +1,6 @@
 # GoogleTest 单元测试套件
 
-用 [GoogleTest](https://github.com/google/googletest) 框架跑全量引擎测试。`tests/V3/` 下的旧测试（每个自带 main）已全部移植为 TEST 用例。
+用 [GoogleTest](https://github.com/google/googletest) 框架跑全量引擎测试。`tests/` 下的旧测试（每个自带 main）已全部移植为 TEST 用例并删除 —— **本目录是唯一的测试来源**。
 
 ## 目录结构
 
@@ -42,29 +42,27 @@ MyPhysicsEngine2DTests.exe --gtest_brief=1             # 简洁输出（PostBuil
 
 ## 新增测试的流程（每次都要做）
 
-以写 `tests/V3/012.cpp` 为例：
+以新增 `V3_012` 测试为例：
 
-1. 照旧写 `tests/V3/012.cpp`（场景函数 + main，与现有 V3 文件同风格）；
-2. 新建 `googleTest/V3_012.cpp`，按下方规则移植为 TEST 用例；
-3. 在 `MyPhysicsEngine2DTests.vcxproj` 的 ClCompile 列表加一行：
+1. 新建 `googleTest/V3_012.cpp`，直接写 TEST 用例（无 main，参照现有文件风格）；
+2. 在 `MyPhysicsEngine2DTests.vcxproj` 的 ClCompile 列表加一行：
    ```xml
    <ClCompile Include="googleTest\V3_012.cpp" />
    ```
    （漏掉这行会被 pre-commit 钩子拦截）
-4. 构建测试工程（或直接提交）——自动跑全量。
+3. 构建测试工程（或直接提交）——自动跑全量。
 
 > 新增引擎源文件（如新的 Joint）时，记得同时注册进主工程和 `MyPhysicsEngine2DTests.vcxproj`。
 
-## 移植规则
+## 断言规则
 
-| 旧测试（tests/V3） | gtest 用例（googleTest） |
+| 场景代码 | gtest 宏 |
 |---|---|
-| `bool RunXxxTest() { ...; return ok; }` | `TEST(V3_NNN, Xxx) { ... }` |
-| `ok &= (a == b);` | `EXPECT_EQ(a, b);` |
-| `ok &= std::abs(x - y) < 1e-4f;` | `EXPECT_NEAR(x, y, 1e-4f);` |
-| `ok &= (x > 3.0f);` | `EXPECT_GT(x, 3.0f);` |
-| `ok &= cond;` | `EXPECT_TRUE(cond);` |
-| main() | 删除（gtest_main 提供入口） |
+| `std::abs(x - y) < 1e-4f` | `EXPECT_NEAR(x, y, 1e-4f);` |
+| `x > 3.0f` / `x < 0.01f` | `EXPECT_GT(x, 3.0f);` / `EXPECT_LT(x, 0.01f);` |
+| `cond` | `EXPECT_TRUE(cond);` |
+| `a == b` | `EXPECT_EQ(a, b);` |
+| main() | 不需要（gtest_main 提供入口） |
 
 要点：
 

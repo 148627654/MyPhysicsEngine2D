@@ -9,7 +9,7 @@ struct JointDef {
     JointType type = JointType::Unknown; ///< 关节类型（工厂分发依据）
     Body* bodyA = nullptr;               ///< 连接的刚体 A
     Body* bodyB = nullptr;               ///< 连接的刚体 B
-    bool collideConnected = false;       ///< 连接双方是否允许发生物理碰撞（暂未实现过滤）
+    bool collideConnected = true;        ///< 连接双方是否允许物理碰撞（true=允许，Box2D 兼容默认）
     void* userData = nullptr;            ///< 用户数据
 };
 
@@ -33,6 +33,7 @@ public:
     JointType getType() const { return m_type; }
     Body* getBodyA() const { return m_bodyA; }
     Body* getBodyB() const { return m_bodyB; }
+    bool getCollideConnected() const { return m_collideConnected; }
 
     // 初始化速度约束
     virtual void initVelocityConstraints(float dt) = 0;

@@ -30,11 +30,14 @@ void Island::solve(const TimeStep& step, const Vector2& gravity) {
             if (!ce->contact->isTrigger() && ce->contact->isTouching()) { hasSolidContact = true; break; }
         }
 
-        if (hasSolidContact && linearVelocitySq < Settings::LinearSleepThreshold * 0.5f) {
+        // 【修复】速度清零必须同时检查 isSleepAllowed()：之前只查实体接触+低速，
+        // 导致 setSleepAllow(false) 的刚体（布娃娃肢体互相碰触时）仍被每帧清零速度，
+        // 下落被压成"清零-重加速"的棘轮（匀速缓降），并可能把限位冲量逼到发散 NaN
+        if (b->isSleepAllowed() && hasSolidContact && linearVelocitySq < Settings::LinearSleepThreshold * 0.5f) {
             b->setVelocity(0);
             linearVelocitySq = 0.0f;
         }
-        if (hasSolidContact && angularVelocitySq < Settings::AngularSleepThreshold * 0.5f) {
+        if (b->isSleepAllowed() && hasSolidContact && angularVelocitySq < Settings::AngularSleepThreshold * 0.5f) {
             b->setAngularVelocity(0.0f);
             angularVelocitySq = 0.0f;
         }

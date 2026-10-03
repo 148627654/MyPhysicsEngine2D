@@ -75,7 +75,7 @@ TEST(V3_007, SolverPipelineDispatch) {
     world.step(1.0f / 60.0f);
 
     EXPECT_EQ(joint->initCalls, 1);
-    EXPECT_EQ(joint->solveCalls, 8);
+    EXPECT_EQ(joint->solveCalls, 10); // 速度迭代已提升至 10（Day 13 规格）
 }
 
 // --- 场景 3: 刚体自毁级联测试 (Cascade Destruction) ---

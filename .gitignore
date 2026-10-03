@@ -12,5 +12,8 @@ MyPhysicsEngine2D.*
 x64/
 output/
 
+# demo 运行生成的 CSV 数据
+2Ddemo/*.csv
+
 # Claude 会话数据
 .claude/

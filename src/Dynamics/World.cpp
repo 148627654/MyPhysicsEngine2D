@@ -321,8 +321,11 @@ void World::buildAndSolveIslands(float dt) {
 
     TimeStep step{};
     step.dt = dt;
-    step.velocityIterations = 8;
-    step.positionIterations = 3;
+    // 【调整】速度迭代 8→10、位置迭代 3→4：
+    // 多刚体紧密串联（布娃娃/闭环四连杆）时提升迭代可显著增强关节刚度，
+    // 减小限位超界与闭环漂移（Day 13 规格建议值）
+    step.velocityIterations = 10;
+    step.positionIterations = 4;
 
     int islandCount = 0; // 诊断：记录本帧生成的岛屿总数
     m_islands.clear();   // 重建本帧岛屿集合（供测试检查 DFS 连通性）
@@ -528,6 +531,15 @@ void World::handleNewCollision(void* uA, void* uB, float dt) {
     // 1. 过滤：两个静态物体之间不需要碰撞处理
     if (bodyA->getInvMass() == 0.0f && bodyB->getInvMass() == 0.0f) {
         return;
+    }
+
+    // 1.5 collideConnected 过滤：关节直连且明确禁止碰撞的刚体对不产生接触
+    //（布娃娃/链条装配时骨骼端部会天然交叉，不滤掉会与关节约束互相打架）
+    for (Joint* j : bodyA->getJointList()) {
+        if ((j->getBodyA() == bodyB && j->getBodyB() == bodyA) ||
+            (j->getBodyA() == bodyA && j->getBodyB() == bodyB)) {
+            if (!j->getCollideConnected()) return;
+        }
     }
 
     // 2. 统一 key 构造（proxyId 排序，见 makeContactKey）

@@ -1109,10 +1109,18 @@ bool Collision::capsuleVsBox(Manifold* m, Body* capsuleBody, Body* boxBody)
 	testPoints[4] = closestPointOnSegment(Vector2(hx, hy), locA, locB);
 	testPoints[5] = closestPointOnSegment(Vector2(-hx, hy), locA, locB);
 
-	// 4. 寻找最小距离点对
+	// 4. 扫描 6 个候选点，同时统计两类信息：
+	//    - 盒外点：到盒面的最近距离（浅接触用）
+	//    - 盒内点：轴刺入盒内的候选点集合（clamp 后距离为 0）
+	// 【修复】旧实现把"轴点刺入盒内"（距离 0）误当"恰好碰面"：
+	//   0/0 产生 NaN 法线，且穿透算成 0 导致胶囊直接穿盒
 	float minClampedDistSq = 1e30f;
-	Vector2 bestSegPoint, bestBoxPoint;
-	bool isDeepInside = true;
+	float maxPushDepth_ = -1e30f;            // 整段深陷时的最近面深度
+	Vector2 bestSegPoint, bestBoxPoint;      // 最近的盒外点对
+	Vector2 pushNormal(0.0f, 1.0f);          // 整段深陷时的最近面推出法线
+	Vector2 deepestSegPoint(0.0f, 0.0f);     // 盒内最深点
+	Vector2 insidePoints[6];
+	int insideCount = 0;
 
 	for (int i = 0; i < 6; ++i) {
 		Vector2 s = testPoints[i];
@@ -1124,13 +1132,32 @@ bool Collision::capsuleVsBox(Manifold* m, Body* capsuleBody, Body* boxBody)
 		float dSq = diff.dot(diff);
 
 		if (dSq > 1e-6f) {
-			isDeepInside = false; // 有点位于盒子外面
+			// 盒外点：跟踪最小表面距离
+			if (dSq < minClampedDistSq) {
+				minClampedDistSq = dSq;
+				bestSegPoint = s;
+				bestBoxPoint = b;
+			}
 		}
-
-		if (dSq < minClampedDistSq) {
-			minClampedDistSq = dSq;
-			bestSegPoint = s;
-			bestBoxPoint = b;
+		else {
+			// 盒内点：收集，并跟踪"最近面推出"信息（整段深陷时用）
+			insidePoints[insideCount++] = s;
+			float dx = hx - std::abs(s.getX());
+			float dy = hy - std::abs(s.getY());
+			if (dx < dy) {
+				if (dx > maxPushDepth_) {
+					maxPushDepth_ = dx;
+					pushNormal = Vector2(s.getX() >= 0.0f ? 1.0f : -1.0f, 0.0f);
+					deepestSegPoint = s;
+				}
+			}
+			else {
+				if (dy > maxPushDepth_) {
+					maxPushDepth_ = dy;
+					pushNormal = Vector2(0.0f, s.getY() >= 0.0f ? 1.0f : -1.0f);
+					deepestSegPoint = s;
+				}
+			}
 		}
 	}
 
@@ -1139,33 +1166,46 @@ bool Collision::capsuleVsBox(Manifold* m, Body* capsuleBody, Body* boxBody)
 	float penetration = 0.0f;
 	Vector2 localContactPoint;
 
-	if (!isDeepInside) {
-		// --- 浅接触 / 外部碰撞 ---
+	if (insideCount > 0 && minClampedDistSq < 1e30f) {
+		// --- 轴刺入盒内、且仍有盒外点：入口面由最近的盒外点决定 ---
+		// 法线约定与浅接触分支一致：从轴点指向盒面（指向盒内），
+		// 下游 dispatch 的 swap+flip 会把它变成"推出"方向
+		Vector2 d = bestBoxPoint - bestSegPoint;
+		float len = d.length();
+		localNormal = (len > 1e-6f) ? d * (1.0f / len) : pushNormal;
+
+		// 穿透 = 半径 + 最深轴点沿法线越过入口面的深度
+		float depth = 0.0f;
+		for (int i = 0; i < insideCount; ++i) {
+			depth = std::max(depth, localNormal.dot(insidePoints[i] - bestBoxPoint));
+		}
+		penetration = capRadius + depth;
+		localContactPoint = bestBoxPoint;
+	}
+	else if (insideCount > 0) {
+		// --- 整段深陷盒内：沿用旧深穿透公式（按最近面推出）---
+		float overlapX = (hx + capRadius) - std::abs(deepestSegPoint.getX());
+		float overlapY = (hy + capRadius) - std::abs(deepestSegPoint.getY());
+		if (overlapX < overlapY) {
+			localNormal = Vector2(deepestSegPoint.getX() > 0 ? 1.0f : -1.0f, 0.0f);
+			penetration = overlapX;
+		}
+		else {
+			localNormal = Vector2(0.0f, deepestSegPoint.getY() > 0 ? 1.0f : -1.0f);
+			penetration = overlapY;
+		}
+		localContactPoint = deepestSegPoint;
+	}
+	else {
+		// --- 轴完全在盒外：常规距离法线 ---
 		float dist = std::sqrt(minClampedDistSq);
 		if (dist > capRadius) {
 			return false; // 没有碰上
 		}
-		// localNormal 从 Capsule 指向 Box: bestBoxPoint - bestSegPoint
 		Vector2 d = bestBoxPoint - bestSegPoint;
 		localNormal = d * (1.0f / dist);
 		penetration = capRadius - dist;
 		localContactPoint = bestBoxPoint;
-	}
-	else {
-		// --- 深穿透保护（线段完全陷入 Box 内部） ---
-		// 查找沿哪个面推出来代价最小 (X 或 Y 轴)
-		float overlapX = (hx + capRadius) - std::abs(bestSegPoint.getX());
-		float overlapY = (hy + capRadius) - std::abs(bestSegPoint.getY());
-
-		if (overlapX < overlapY) {
-			localNormal = Vector2(bestSegPoint.getX() > 0 ? 1.0f : -1.0f, 0.0f);
-			penetration = overlapX;
-		}
-		else {
-			localNormal = Vector2(0.0f, bestSegPoint.getY() > 0 ? 1.0f : -1.0f);
-			penetration = overlapY;
-		}
-		localContactPoint = bestSegPoint;
 	}
 
 	// 5. 将法线与接触点正向旋转回世界坐标

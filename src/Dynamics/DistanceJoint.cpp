@@ -168,8 +168,11 @@ bool DistanceJoint::solvePositionConstraints()
 
     float ra = Vector2::cross(m_rA, P);
     float rb = Vector2::cross(m_rB, P);
+    // 【修复】B 的角向修正符号之前是 -（与 Box2D 相反）：杆超长时 B 朝错误方向
+    // 旋转，越修越长，偏心锚点的杆（吊桥/吊杆）会持续自旋泵能。
+    // 正确：A 沿 -invIA·(rA×P)，B 沿 +invIB·(rB×P)
     a->setRotationQuiet(a->getRotation() - a->getInvInertia() * ra);
-    b->setRotationQuiet(b->getRotation() - b->getInvInertia() * rb);
+    b->setRotationQuiet(b->getRotation() + b->getInvInertia() * rb);
 
     return std::abs(C) < 0.005f; // 线性容差
 }

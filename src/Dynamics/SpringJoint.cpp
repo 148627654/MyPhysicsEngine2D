@@ -75,10 +75,11 @@ void SpringJoint::solveVelocityConstraints()
 
 Vector2 SpringJoint::getAnchorA() const
 {
-	return m_localAnchorA;
+	// 返回世界坐标（与 RevoluteJoint 一致；之前误返回局部锚点）
+	return m_bodyA->getPosition() + m_localAnchorA.rotate(m_bodyA->getRotation());
 }
 
 Vector2 SpringJoint::getAnchorB() const
 {
-	return m_localAnchorB;
+	return m_bodyB->getPosition() + m_localAnchorB.rotate(m_bodyB->getRotation());
 }
