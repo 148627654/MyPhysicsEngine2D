@@ -2,6 +2,7 @@
 #include "DistanceJoint.h"
 #include "RevoluteJoint.h"
 #include "SpringJoint.h"
+#include "WeldJoint.h"
 #include "../Collision/Collision.h"
 #include "../Collision/Box.h"
 #include "../Collision/Circle.h"
@@ -599,6 +600,9 @@ Joint* World::createJoint(const JointDef& def) {
         break;
     case JointType::Revolute:
         joint = new RevoluteJoint(&static_cast<const RevoluteJointDef&>(def));
+        break;
+    case JointType::Weld:
+        joint = new WeldJoint(&static_cast<const WeldJointDef&>(def));
         break;
     default:
         return nullptr; // 未知类型

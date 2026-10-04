@@ -1,8 +1,8 @@
 #pragma once
 #include "Body.h"
 
-// 枚举joint的类型		杆状		弹簧	旋转/铰链	
-enum class JointType { Distance, Spring, Revolute, Unknown };
+// 枚举joint的类型		杆状		弹簧	旋转/铰链	   焊接
+enum class JointType { Distance, Spring, Revolute, Unknown, Weld};
 
 /// @brief 关节通用定义
 struct JointDef {
