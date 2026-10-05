@@ -1,14 +1,6 @@
 #pragma once
 #include "Joint.h"
 
-// 限位状态机
-enum class LimitState {
-    Inactive,  // 自由旋转，限位不生效
-    AtLower,   // 触碰下限位（只能产生使角度增大的正冲量）
-    AtUpper,   // 触碰上限位（只能产生使角度减小的负冲量）
-    Equal      // 上下限相等：双向等式约束，锁死角度（刚性焊接）
-};
-
 struct RevoluteJointDef :public JointDef
 {
     Vector2 localAnchorA;          // BodyA 上的局部锚点

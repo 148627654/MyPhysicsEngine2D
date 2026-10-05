@@ -2,7 +2,15 @@
 #include "Body.h"
 
 // 枚举joint的类型		杆状		弹簧	旋转/铰链	   焊接
-enum class JointType { Distance, Spring, Revolute, Unknown, Weld};
+enum class JointType { Distance, Spring, Revolute, Unknown, Weld, Prismatic};
+
+// 限位状态机（Revolute 角度限位与 Prismatic 平移限位共用）
+enum class LimitState {
+    Inactive,  // 自由区间，限位不生效
+    AtLower,   // 触碰下限位（只能产生推回正方向的单侧冲量）
+    AtUpper,   // 触碰上限位（只能产生推回负方向的单侧冲量）
+    Equal      // 上下限相等：双向等式约束，锁死该自由度（刚性连接）
+};
 
 /// @brief 关节通用定义
 struct JointDef {

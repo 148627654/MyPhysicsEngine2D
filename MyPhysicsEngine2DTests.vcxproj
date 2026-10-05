@@ -67,6 +67,7 @@
     <ClCompile Include="src\Dynamics\ContactManager.cpp" />
     <ClCompile Include="src\Dynamics\Island.cpp" />
     <ClCompile Include="src\Dynamics\Joint.cpp" />
+    <ClCompile Include="src\Dynamics\PrismaticJoint.cpp" />
     <ClCompile Include="src\Dynamics\RevoluteJoint.cpp" />
     <ClCompile Include="src\Dynamics\Solver.cpp" />
     <ClCompile Include="src\Dynamics\SpringJoint.cpp" />
@@ -89,6 +90,7 @@
     <ClCompile Include="googleTest\V3_010.cpp" />
     <ClCompile Include="googleTest\V3_011.cpp" />
     <ClCompile Include="googleTest\V4_001.cpp" />
+    <ClCompile Include="googleTest\V4_002.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
