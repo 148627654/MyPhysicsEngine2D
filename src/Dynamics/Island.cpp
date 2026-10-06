@@ -11,62 +11,6 @@ Island::Island(int bodyCapacity, int contactCapacity) {
 void Island::solve(const TimeStep& step, const Vector2& gravity) {
     float dt = step.dt;
 
-    float minSleepTimer = 1000.0f;
-
-    // 1. 能量监控
-    for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f) continue;
-
-        // 如果该物体禁止休眠，或者当前是清醒的且动能大
-        float linearVelocitySq = b->getVelocity().lengthSquared();
-        float angularVelocitySq = b->getAngularVelocity() * b->getAngularVelocity();
-
-        // 【修复】仅当存在"正在接触"的实体接触（非触发器）时才允许速度归零。
-        // 否则自由落体/抛射体在初始低速阶段每帧被清零，永远无法加速（从静止下落不动的 bug）
-        // 注意必须检查 isTouching()：宽相的肥 AABB 会在形状真正接触前就创建 Contact，
-        // 只查 !isTrigger() 会把"尚未接触"的接触当成实体接触，球照样被冻结
-        bool hasSolidContact = false;
-        for (ContactEdge* ce = b->getContactList(); ce != nullptr; ce = ce->next) {
-            if (!ce->contact->isTrigger() && ce->contact->isTouching()) { hasSolidContact = true; break; }
-        }
-
-        // 【修复】速度清零必须同时检查 isSleepAllowed()：之前只查实体接触+低速，
-        // 导致 setSleepAllow(false) 的刚体（布娃娃肢体互相碰触时）仍被每帧清零速度，
-        // 下落被压成"清零-重加速"的棘轮（匀速缓降），并可能把限位冲量逼到发散 NaN
-        if (b->isSleepAllowed() && hasSolidContact && linearVelocitySq < Settings::LinearSleepThreshold * 0.5f) {
-            b->setVelocity(0);
-            linearVelocitySq = 0.0f;
-        }
-        if (b->isSleepAllowed() && hasSolidContact && angularVelocitySq < Settings::AngularSleepThreshold * 0.5f) {
-            b->setAngularVelocity(0.0f);
-            angularVelocitySq = 0.0f;
-        }
-        if (!b->isSleepAllowed() ||
-            linearVelocitySq > Settings::LinearSleepThreshold ||
-            angularVelocitySq > Settings::AngularSleepThreshold)
-        {
-            //printf("Body Energy: %f | Threshold: %f\n", linearVelocitySq, Settings::LinearSleepThreshold);
-            //printf("Body Energy: %f | Threshold: %f\n", angularVelocitySq, Settings::AngularSleepThreshold);
-            b->setSleepTimer(0.0f);
-            minSleepTimer = 0.0f;
-        }
-        else {
-            b->setSleepTimer(b->getSleepTimer() + dt);
-            minSleepTimer = std::min(minSleepTimer, b->getSleepTimer());
-        }
-    }
-
-    // 2. 尝试集体入睡
-    if (minSleepTimer >= Settings::TimeToSleep) {
-        for (Body* b : m_bodies) {
-            if (b->getInvMass() > 0.0f) {
-                b->setAwake(false);
-                b->setVelocity(Vector2(0, 0)); // 物理平滑优化
-                b->setAngularVelocity(0.0f);
-            }
-        }
-        return;
-    }
     // 0. 初始化关节速度约束（每帧恰好一次）
     for (Joint* j : m_joints) {
         j->initVelocityConstraints(step.dt);
@@ -99,6 +43,62 @@ void Island::solve(const TimeStep& step, const Vector2& gravity) {
         // 关节位置约束
         for (Joint* j : m_joints) {
             j->solvePositionConstraints();
+        }
+    }
+
+    // 5. 能量监控与集体入睡（【修复】必须在求解之后判定——用解算后的速度）。
+    //    之前放在求解前：重力刚注入的速度（如 0.08 m/s）还没被解算器消除，
+    //    睡眠计时器每帧被重置，纯耗散关节刹住的物体永远无法入睡。
+    float minSleepTimer = 1000.0f;
+    for (Body* b : m_bodies) {
+        if (b->getInvMass() == 0.0f) continue;
+
+        float linearVelocitySq = b->getVelocity().lengthSquared();
+        float angularVelocitySq = b->getAngularVelocity() * b->getAngularVelocity();
+
+        // 【修复】仅当存在"正在接触"的实体接触（非触发器）时才允许速度归零。
+        // 否则自由落体/抛射体在初始低速阶段每帧被清零，永远无法加速（从静止下落不动的 bug）
+        // 注意必须检查 isTouching()：宽相的肥 AABB 会在形状真正接触前就创建 Contact，
+        // 只查 !isTrigger() 会把"尚未接触"的接触当成实体接触，球照样被冻结
+        bool hasSolidContact = false;
+        for (ContactEdge* ce = b->getContactList(); ce != nullptr; ce = ce->next) {
+            if (!ce->contact->isTrigger() && ce->contact->isTouching()) { hasSolidContact = true; break; }
+        }
+
+        // 【修复】速度清零必须同时检查 isSleepAllowed()：之前只查实体接触+低速，
+        // 导致 setSleepAllow(false) 的刚体（布娃娃肢体互相碰触时）仍被每帧清零速度，
+        // 下落被压成"清零-重加速"的棘轮（匀速缓降），并可能把限位冲量逼到发散 NaN
+        // 【修复】阈值是速度量纲，与速度平方比较必须平方（原 1.0 直接比 ≈ |v|<1m/s 就冻结）
+        if (b->isSleepAllowed() && hasSolidContact &&
+            linearVelocitySq < Settings::LinearSleepThreshold * Settings::LinearSleepThreshold * 0.5f) {
+            b->setVelocity(0);
+            linearVelocitySq = 0.0f;
+        }
+        if (b->isSleepAllowed() && hasSolidContact && angularVelocitySq < Settings::AngularSleepThreshold * 0.5f) {
+            b->setAngularVelocity(0.0f);
+            angularVelocitySq = 0.0f;
+        }
+        if (!b->isSleepAllowed() ||
+            linearVelocitySq > Settings::LinearSleepThreshold * Settings::LinearSleepThreshold ||
+            angularVelocitySq > Settings::AngularSleepThreshold)
+        {
+            b->setSleepTimer(0.0f);
+            minSleepTimer = 0.0f;
+        }
+        else {
+            b->setSleepTimer(b->getSleepTimer() + dt);
+            minSleepTimer = std::min(minSleepTimer, b->getSleepTimer());
+        }
+    }
+
+    // 集体入睡
+    if (minSleepTimer >= Settings::TimeToSleep) {
+        for (Body* b : m_bodies) {
+            if (b->getInvMass() > 0.0f) {
+                b->setAwake(false);
+                b->setVelocity(Vector2(0, 0)); // 物理平滑优化
+                b->setAngularVelocity(0.0f);
+            }
         }
     }
 }

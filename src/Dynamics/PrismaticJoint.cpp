@@ -10,7 +10,10 @@ PrismaticJoint::PrismaticJoint(const PrismaticJointDef* def)
 	m_referenceAngle(def->referenceAngle),
 	m_enableLimit(def->enableLimit),
 	m_lowerTranslation(def->lowerTranslation),
-	m_upperTranslation(def->upperTranslation)
+	m_upperTranslation(def->upperTranslation),
+	m_enableMotor(def->enableMotor),
+	m_motorSpeed(def->motorSpeed),
+	m_maxMotorForce(def->maxMotorForce)
 {
 	// 垂向轴 = 滑轨轴逆时针转 90°（Box2D 约定 n = (1,0)×t）
 	m_localYAxisA = m_localXAxisA.getLeftNormal();
@@ -88,10 +91,13 @@ void PrismaticJoint::initVelocityConstraints(float dt)
 		m_limitBias = -0.2f * C / dt;
 	}
 
-	// 热启动：上一帧累计冲量立即施加
-	Vector2 P = m_perp * m_impulse.getX() + m_axis * m_limitImpulse;
-	float LA = m_impulse.getX() * m_s1 + m_impulse.getY() + m_limitImpulse * m_a1;
-	float LB = m_impulse.getX() * m_s2 + m_impulse.getY() + m_limitImpulse * m_a2;
+	// 马达每帧冲量钳位上限: λmax = dt · Fmax
+	m_maxMotorImpulse = dt * m_maxMotorForce;
+
+	// 热启动：上一帧累计冲量（基础 + 马达 + 限位）立即施加
+	Vector2 P = m_perp * m_impulse.getX() + m_axis * (m_motorImpulse + m_limitImpulse);
+	float LA = m_impulse.getX() * m_s1 + m_impulse.getY() + (m_motorImpulse + m_limitImpulse) * m_a1;
+	float LB = m_impulse.getX() * m_s2 + m_impulse.getY() + (m_motorImpulse + m_limitImpulse) * m_a2;
 	m_bodyA->setVelocity(m_bodyA->getVelocity() - P * mA);
 	m_bodyA->setAngularVelocity(m_bodyA->getAngularVelocity() - iA * LA);
 	m_bodyB->setVelocity(m_bodyB->getVelocity() + P * mB);
@@ -106,6 +112,24 @@ void PrismaticJoint::solveVelocityConstraints()
 	float wB = m_bodyB->getAngularVelocity();
 	float mA = m_bodyA->getInvMass(), mB = m_bodyB->getInvMass();
 	float iA = m_bodyA->getInvInertia(), iB = m_bodyB->getInvInertia();
+
+	// ---- 线性马达（1-DOF，双向对称饱和；与限位冲量绝对隔离）----
+	// Equal 锁死时限位已把连杆焊死，跳过马达避免与刚性限位内耗
+	if (m_enableMotor && m_limitState != LimitState::Equal)
+	{
+		float Cdot = m_axis.dot(vB - vA) + m_a2 * wB - m_a1 * wA;
+		float impulse = m_axialMass * (m_motorSpeed - Cdot);
+		float oldImpulse = m_motorImpulse;
+		// 推力饱和钳位：累积马达冲量截断在 [-dt·Fmax, +dt·Fmax]
+		m_motorImpulse = std::max(-m_maxMotorImpulse, std::min(m_maxMotorImpulse, m_motorImpulse + impulse));
+		impulse = m_motorImpulse - oldImpulse;
+
+		Vector2 P = m_axis * impulse;
+		vA -= P * mA;
+		wA -= iA * impulse * m_a1;
+		vB += P * mB;
+		wB += iB * impulse * m_a2;
+	}
 
 	// ---- 基础 2×2（垂向平移 + 相对旋转）：解 K·λ = -(Cdot + bias) ----
 	Vector2 Cdot1(m_perp.dot(vB - vA) + m_s2 * wB - m_s1 * wA, wB - wA);

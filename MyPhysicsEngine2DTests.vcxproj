@@ -64,6 +64,7 @@
     <ClCompile Include="src\Common\Vector2.cpp" />
     <ClCompile Include="src\Dynamics\Body.cpp" />
     <ClCompile Include="src\Dynamics\DistanceJoint.cpp" />
+    <ClCompile Include="src\Dynamics\FrictionJoint.cpp" />
     <ClCompile Include="src\Dynamics\ContactManager.cpp" />
     <ClCompile Include="src\Dynamics\Island.cpp" />
     <ClCompile Include="src\Dynamics\Joint.cpp" />
@@ -91,6 +92,7 @@
     <ClCompile Include="googleTest\V3_011.cpp" />
     <ClCompile Include="googleTest\V4_001.cpp" />
     <ClCompile Include="googleTest\V4_002.cpp" />
+    <ClCompile Include="googleTest\V4_003.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

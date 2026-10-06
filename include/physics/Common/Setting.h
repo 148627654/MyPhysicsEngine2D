@@ -21,7 +21,11 @@ namespace Settings
     static constexpr float k_aabbExtension = 0.1f;      //单位长度
     static constexpr float k_aabbMultiplier = 2.0f;     //位移预测倍率
 
-    static constexpr float LinearSleepThreshold = 1.0f;
+    // 睡眠阈值（速度量纲 m/s、rad/s，与 Box2D 对齐）：
+    // 【修复】原值 1.0 当"速度平方"比较 → 任何有实体接触且 |v| < 1 m/s 的物体
+    // 每帧被清零速度，缓慢滑动/滑行被冻成"清零-重加速"棘轮（布娃娃缓降 bug 同源）。
+    // Box2D 对应 b2_linearSleepTolerance = 0.01 m/s
+    static constexpr float LinearSleepThreshold = 0.01f;
     static constexpr float AngularSleepThreshold = 0.8f;  //(角速度阈值)
     static constexpr float TimeToSleep = 0.5f;
     static constexpr float EPSILON = 1e-7f;

@@ -1,5 +1,6 @@
 #include "World.h"
 #include "DistanceJoint.h"
+#include "FrictionJoint.h"
 #include "PrismaticJoint.h"
 #include "RevoluteJoint.h"
 #include "SpringJoint.h"
@@ -607,6 +608,9 @@ Joint* World::createJoint(const JointDef& def) {
         break;
     case JointType::Weld:
         joint = new WeldJoint(&static_cast<const WeldJointDef&>(def));
+        break;
+    case JointType::Friction:
+        joint = new FrictionJoint(&static_cast<const FrictionJointDef&>(def));
         break;
     default:
         return nullptr; // 未知类型
