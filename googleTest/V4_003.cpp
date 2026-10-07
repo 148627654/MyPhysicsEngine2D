@@ -93,7 +93,10 @@ TEST(V4_003, FrictionJointSlopeHolding) {
         world.addBody(disk);
 
         FrictionJointDef def;
-        def.initialize(ground, disk, spawn); // 锚点 = 圆盘出生中心
+        def.bodyA = ground;
+        def.bodyB = disk;
+        def.localAnchorA = (spawn - ground->getPosition()).rotate(-ground->getRotation());
+        def.localAnchorB = (spawn - disk->getPosition()).rotate(-disk->getRotation());
         def.maxForce = 100.0f;  // 50N < 100N：刹得住
         def.maxTorque = 0.0f;
         FrictionJoint* joint = static_cast<FrictionJoint*>(world.createJoint(def));
@@ -144,7 +147,10 @@ TEST(V4_003, AngularFrictionDamping) {
     disk->setAngularVelocity(10.0f);
 
     FrictionJointDef def;
-    def.initialize(ground, disk, Vector2(0.0f, 0.0f)); // 锚点 = 圆盘中心
+    def.bodyA = ground;
+    def.bodyB = disk;
+    def.localAnchorA = (Vector2(0.0f, 0.0f) - ground->getPosition()).rotate(-ground->getRotation());
+    def.localAnchorB = (Vector2(0.0f, 0.0f) - disk->getPosition()).rotate(-disk->getRotation());
     def.maxForce = 0.0f;
     def.maxTorque = 2.0f; // 最大角摩擦扭矩 2 N·m
     FrictionJoint* joint = static_cast<FrictionJoint*>(world.createJoint(def));

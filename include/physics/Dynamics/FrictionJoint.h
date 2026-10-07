@@ -8,14 +8,6 @@ struct FrictionJointDef : public JointDef
     Vector2 localAnchorB;          // BodyB 上的局部锚点
     float maxForce = 0.0f;         // 最大线摩擦阻尼力 (N)
     float maxTorque = 0.0f;        // 最大角摩擦阻尼扭矩 (N·m)
-
-    // 便捷装配：给定世界锚点，自动计算局部锚点（与 RevoluteJointDef 同款）
-    void initialize(Body* bA, Body* bB, const Vector2& worldAnchor) {
-        bodyA = bA;
-        bodyB = bB;
-        localAnchorA = (worldAnchor - bA->getPosition()).rotate(-bA->getRotation());
-        localAnchorB = (worldAnchor - bB->getPosition()).rotate(-bB->getRotation());
-    }
 };
 
 /// @brief 摩擦关节：有界饱和冲量的耗散约束（引擎第一个"阻尼类"关节）

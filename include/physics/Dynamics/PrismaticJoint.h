@@ -18,15 +18,6 @@ struct PrismaticJointDef:public JointDef
     bool enableMotor = false;
     float motorSpeed = 0.0f;    // 目标滑动速度 (m/s)
     float maxMotorForce = 0.0f; // 最大输出推力 (N)
-
-    // 便捷装配：给定世界锚点，自动计算局部锚点与基准角（与 RevoluteJointDef 同款）
-    void initialize(Body* bA, Body* bB, const Vector2& worldAnchor) {
-        bodyA = bA;
-        bodyB = bB;
-        localAnchorA = (worldAnchor - bA->getPosition()).rotate(-bA->getRotation());
-        localAnchorB = (worldAnchor - bB->getPosition()).rotate(-bB->getRotation());
-        referenceAngle = bB->getRotation() - bA->getRotation();
-    }
 };
 
 class PrismaticJoint : public Joint

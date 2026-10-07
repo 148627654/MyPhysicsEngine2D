@@ -8,15 +8,6 @@ struct RevoluteJointDef :public JointDef
     float referenceAngle = 0.0f;   // 装配时的基准相对角度 θB0 - θA0
     RevoluteJointDef() { type = JointType::Revolute; }
 
-    // 便捷装配：给定世界锚点，自动计算局部锚点与基准角
-    void initialize(Body* bA, Body* bB, const Vector2& worldAnchor) {
-        bodyA = bA;
-        bodyB = bB;
-        localAnchorA = (worldAnchor - bA->getPosition()).rotate(-bA->getRotation());
-        localAnchorB = (worldAnchor - bB->getPosition()).rotate(-bB->getRotation());
-        referenceAngle = bB->getRotation() - bA->getRotation();
-    }
-
     // --- 角度限位配置 ---
     bool enableLimit = false;
     float lowerAngle = 0.0f;    // 最小相对角度（弧度）

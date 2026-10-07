@@ -29,7 +29,11 @@ TEST(V3_011, MotorDriveConstantSpeed) {
     world.addBody(wheel);
 
     RevoluteJointDef def;
-    def.initialize(chassis, wheel, Vector2(0.0f, 5.0f));
+    def.bodyA = chassis;
+    def.bodyB = wheel;
+    def.localAnchorA = (Vector2(0.0f, 5.0f) - chassis->getPosition()).rotate(-chassis->getRotation());
+    def.localAnchorB = (Vector2(0.0f, 5.0f) - wheel->getPosition()).rotate(-wheel->getRotation());
+    def.referenceAngle = wheel->getRotation() - chassis->getRotation();
     def.enableMotor = true;
     def.motorSpeed = 10.0f;     // 目标转速 10 rad/s
     def.maxMotorTorque = 100.0f;// 最大扭矩 100 N·m
@@ -65,7 +69,11 @@ TEST(V3_011, AngleLimitsRebound) {
     world.addBody(arm);
 
     RevoluteJointDef def;
-    def.initialize(pin, arm, Vector2(0.0f, 5.0f));
+    def.bodyA = pin;
+    def.bodyB = arm;
+    def.localAnchorA = (Vector2(0.0f, 5.0f) - pin->getPosition()).rotate(-pin->getRotation());
+    def.localAnchorB = (Vector2(0.0f, 5.0f) - arm->getPosition()).rotate(-arm->getRotation());
+    def.referenceAngle = arm->getRotation() - pin->getRotation();
     def.enableLimit = true;
     def.lowerAngle = -Settings::PAI / 4.0f;
     def.upperAngle = Settings::PAI / 4.0f;
@@ -100,7 +108,11 @@ TEST(V3_011, EqualLimitWeld) {
     world.addBody(plate);
 
     RevoluteJointDef def;
-    def.initialize(pin, plate, Vector2(0.0f, 5.0f));
+    def.bodyA = pin;
+    def.bodyB = plate;
+    def.localAnchorA = (Vector2(0.0f, 5.0f) - pin->getPosition()).rotate(-pin->getRotation());
+    def.localAnchorB = (Vector2(0.0f, 5.0f) - plate->getPosition()).rotate(-plate->getRotation());
+    def.referenceAngle = plate->getRotation() - pin->getRotation();
     def.enableLimit = true;
     def.lowerAngle = 0.0f;
     def.upperAngle = 0.0f; // 等角锁死 → 刚性焊接

@@ -1,8 +1,9 @@
 #pragma once
 #include "Body.h"
 
-// 枚举joint的类型		杆状		弹簧	旋转/铰链	   焊接
-enum class JointType { Distance, Spring, Revolute, Unknown, Weld, Prismatic, Friction};
+// 枚举joint的类型		杆状		弹簧	旋转/铰链	   焊接    滑块     摩擦        绳子
+enum class JointType { Distance, Spring, Revolute, Unknown, Weld, Prismatic, Friction, Rope
+};
 
 // 限位状态机（Revolute 角度限位与 Prismatic 平移限位共用）
 enum class LimitState {

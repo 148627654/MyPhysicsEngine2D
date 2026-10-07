@@ -33,7 +33,12 @@ static RevoluteJoint* MakeLimitedJoint(World& world, Body* a, Body* b,
     std::vector<RevoluteJoint*>& joints) {
     RevoluteJointDef def;
     def.collideConnected = false; // 关节直连骨骼互不碰撞（引擎已实现过滤）
-    def.initialize(a, b, worldAnchor);
+    def.bodyA = a;
+    def.bodyB = b;
+    // 局部锚点 = 世界锚点减去质心位置、再按当前旋转反旋（预倾斜装配必须走通用形式）
+    def.localAnchorA = (worldAnchor - a->getPosition()).rotate(-a->getRotation());
+    def.localAnchorB = (worldAnchor - b->getPosition()).rotate(-b->getRotation());
+    def.referenceAngle = b->getRotation() - a->getRotation();
     def.enableLimit = true;
     def.lowerAngle = lower;
     def.upperAngle = upper;

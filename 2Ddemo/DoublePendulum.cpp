@@ -54,9 +54,19 @@ int main() {
     {
         RevoluteJointDef def;
         def.collideConnected = false;
-        def.initialize(anchor, rod1, Vector2(0.0f, 6.0f)); // 锚点铰接 rod1 左端
+        // 锚点铰接 rod1 左端
+        def.bodyA = anchor;
+        def.bodyB = rod1;
+        def.localAnchorA = (Vector2(0.0f, 6.0f) - anchor->getPosition()).rotate(-anchor->getRotation());
+        def.localAnchorB = (Vector2(0.0f, 6.0f) - rod1->getPosition()).rotate(-rod1->getRotation());
+        def.referenceAngle = rod1->getRotation() - anchor->getRotation();
         world.createJoint(def);
-        def.initialize(rod1, rod2, Vector2(2.0f, 6.0f));   // rod1 右端铰接 rod2 左端
+        // rod1 右端铰接 rod2 左端
+        def.bodyA = rod1;
+        def.bodyB = rod2;
+        def.localAnchorA = (Vector2(2.0f, 6.0f) - rod1->getPosition()).rotate(-rod1->getRotation());
+        def.localAnchorB = (Vector2(2.0f, 6.0f) - rod2->getPosition()).rotate(-rod2->getRotation());
+        def.referenceAngle = rod2->getRotation() - rod1->getRotation();
         world.createJoint(def);
     }
     Logger::info("组装完成: 双摆从水平高位释放（高能初始态 -> 混沌）");
