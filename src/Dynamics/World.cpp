@@ -1,7 +1,9 @@
 #include "World.h"
 #include "DistanceJoint.h"
 #include "FrictionJoint.h"
+#include "GearJoint.h"
 #include "PrismaticJoint.h"
+#include "PulleyJoint.h"
 #include "RevoluteJoint.h"
 #include "RopeJoint.h"
 #include "SpringJoint.h"
@@ -616,6 +618,12 @@ Joint* World::createJoint(const JointDef& def) {
     case JointType::Rope:
         joint = new RopeJoint(&static_cast<const RopeJointDef&>(def));
         break;
+    case JointType::Pulley:
+        joint = new PulleyJoint(&static_cast<const PulleyJointDef&>(def));
+        break;
+    case JointType::Gear:
+        joint = new GearJoint(&static_cast<const GearJointDef&>(def));
+        break;
     default:
         return nullptr; // 未知类型
     }
@@ -624,12 +632,32 @@ Joint* World::createJoint(const JointDef& def) {
     return joint;
 }
 
+void World::add(Joint* joint) {
+    m_joints.push_back(joint);
+    joint->m_bodyA->addJoint(joint);
+    joint->m_bodyB->addJoint(joint);
+    // 齿轮关节额外把父关节的 A 侧刚体（C/D）也挂上关节链表：
+    // 图论遍历能索引到全部 4 个刚体，destroyBody 级联销毁也能覆盖齿轮
+    if (joint->getType() == JointType::Gear) {
+        GearJoint* gear = static_cast<GearJoint*>(joint);
+        gear->getBodyC()->addJoint(gear);
+        gear->getBodyD()->addJoint(gear);
+    }
+}
+
 void World::destroyJoint(Joint* joint) {
     if (joint == nullptr) return;
 
-    // 1. 从双方刚体的关节列表移除（Body::removeJoint 内部有存在性检查）
+    // 1. 从关联刚体的关节列表移除（Body::removeJoint 内部有存在性检查）
     joint->m_bodyA->removeJoint(joint);
     joint->m_bodyB->removeJoint(joint);
+    // 齿轮关节额外注册了父关节的 A 侧刚体（C/D），必须一并摘除，
+    // 否则 destroyBody 时列表里残留悬空指针 → 二次释放
+    if (joint->getType() == JointType::Gear) {
+        GearJoint* gear = static_cast<GearJoint*>(joint);
+        gear->getBodyC()->removeJoint(gear);
+        gear->getBodyD()->removeJoint(gear);
+    }
 
     // 2. 从世界关节列表移除
     auto it = std::find(m_joints.begin(), m_joints.end(), joint);
@@ -637,7 +665,22 @@ void World::destroyJoint(Joint* joint) {
         m_joints.erase(it);
     }
 
-    // 3. 释放内存
+    // 3. 级联断链防护：被销毁的关节若是某个齿轮关节的父关节，齿轮必须同步销毁
+    //    （齿轮持有父关节裸指针，悬空 = 野指针崩溃）。先收集再销毁，避免迭代器失效
+    std::vector<Joint*> cascaded;
+    for (Joint* j : m_joints) {
+        if (j->getType() == JointType::Gear) {
+            GearJoint* gear = static_cast<GearJoint*>(j);
+            if (gear->getJoint1() == joint || gear->getJoint2() == joint) {
+                cascaded.push_back(j);
+            }
+        }
+    }
+    for (Joint* j : cascaded) {
+        destroyJoint(j);
+    }
+
+    // 4. 释放内存
     delete joint;
 }
 

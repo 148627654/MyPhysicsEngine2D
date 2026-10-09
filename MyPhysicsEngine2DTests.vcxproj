@@ -65,10 +65,12 @@
     <ClCompile Include="src\Dynamics\Body.cpp" />
     <ClCompile Include="src\Dynamics\DistanceJoint.cpp" />
     <ClCompile Include="src\Dynamics\FrictionJoint.cpp" />
+    <ClCompile Include="src\Dynamics\GearJoint.cpp" />
     <ClCompile Include="src\Dynamics\ContactManager.cpp" />
     <ClCompile Include="src\Dynamics\Island.cpp" />
     <ClCompile Include="src\Dynamics\Joint.cpp" />
     <ClCompile Include="src\Dynamics\PrismaticJoint.cpp" />
+    <ClCompile Include="src\Dynamics\PulleyJoint.cpp" />
     <ClCompile Include="src\Dynamics\RevoluteJoint.cpp" />
     <ClCompile Include="src\Dynamics\RopeJoint.cpp" />
     <ClCompile Include="src\Dynamics\Solver.cpp" />
@@ -95,6 +97,8 @@
     <ClCompile Include="googleTest\V4_002.cpp" />
     <ClCompile Include="googleTest\V4_003.cpp" />
     <ClCompile Include="googleTest\V4_004.cpp" />
+    <ClCompile Include="googleTest\V4_005.cpp" />
+    <ClCompile Include="googleTest\V4_006.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -64,12 +64,8 @@ public:
 	// 接触生命周期事件管理（Enter/Stay/Exit），每帧 step 后从这里读取记录
 	inline ContactManager& getContactManager() { return m_contactManager; }
 	inline void setContactListener(ContactListener* listener) { m_contactListener = listener; }
-	// 注册关节：把关节同时挂到双方刚体的关节链表上
-	void add(Joint* joint) {
-		m_joints.push_back(joint);
-		joint->m_bodyA->addJoint(joint);
-		joint->m_bodyB->addJoint(joint);
-	}
+	// 注册关节：把关节同时挂到关联刚体的关节链表上（齿轮关节额外挂父关节的 A 侧）
+	void add(Joint* joint);
 	// 销毁关节：从世界和双方刚体移除并释放
 	void destroyJoint(Joint* joint);
 	// 工厂：按 def 类型创建关节并注册到世界（distance 等）

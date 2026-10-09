@@ -37,6 +37,8 @@ public:
 	}
 	// 当前限位状态（诊断/游戏逻辑用）
 	LimitState getLimitState() const { return m_limitState; }
+	// 滑轨局部轴（GearJoint 齿轮齿条雅可比组装用）
+	Vector2 getLocalAxisA() const { return m_localXAxisA; }
 
 	// --- 运行时控制 API（马达）---
 	void setMotorSpeed(float speed) { m_motorSpeed = speed; }
