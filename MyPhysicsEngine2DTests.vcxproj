@@ -76,6 +76,7 @@
     <ClCompile Include="src\Dynamics\Solver.cpp" />
     <ClCompile Include="src\Dynamics\SpringJoint.cpp" />
     <ClCompile Include="src\Dynamics\WeldJoint.cpp" />
+    <ClCompile Include="src\Dynamics\WheelJoint.cpp" />
     <ClCompile Include="src\Dynamics\World.cpp" />
     <ClCompile Include="src\Utils\CSVExporter.cpp" />
     <ClCompile Include="src\Utils\Logger.cpp" />
@@ -99,6 +100,7 @@
     <ClCompile Include="googleTest\V4_004.cpp" />
     <ClCompile Include="googleTest\V4_005.cpp" />
     <ClCompile Include="googleTest\V4_006.cpp" />
+    <ClCompile Include="googleTest\V4_007.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

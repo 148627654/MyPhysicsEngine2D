@@ -8,6 +8,7 @@
 #include "RopeJoint.h"
 #include "SpringJoint.h"
 #include "WeldJoint.h"
+#include "WheelJoint.h"
 #include "../Collision/Collision.h"
 #include "../Collision/Box.h"
 #include "../Collision/Circle.h"
@@ -623,6 +624,9 @@ Joint* World::createJoint(const JointDef& def) {
         break;
     case JointType::Gear:
         joint = new GearJoint(&static_cast<const GearJointDef&>(def));
+        break;
+    case JointType::Wheel:
+        joint = new WheelJoint(&static_cast<const WheelJointDef&>(def));
         break;
     default:
         return nullptr; // 未知类型
