@@ -3,8 +3,8 @@
 
 // 枚举joint的类型		杆状		弹簧	旋转/铰链	   焊接    滑块     摩擦        绳子  
 enum class JointType { Distance, Spring, Revolute, Unknown, Weld, Prismatic, Friction, Rope,
-    Pulley  , Gear, Wheel
-	// 滑轮   齿轮   车轮
+    Pulley  , Gear, Wheel, Mouse
+	// 滑轮   齿轮   车轮   鼠标
 
 };
 
