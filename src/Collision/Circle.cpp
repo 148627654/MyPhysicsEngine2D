@@ -75,3 +75,9 @@ bool Circle::rayCast(RayCastOutput* output, RayCastInput& input,
 
     return false;
 }
+
+// 点包含判定：点到圆心的距离平方 <= R^2
+bool Circle::TestPoint(const Vector2& localPoint) const
+{
+    return localPoint.lengthSquared() <= radius * radius;
+}

@@ -14,6 +14,8 @@ public:
 	float getArea() const override;
 	bool rayCast(RayCastOutput* output, RayCastInput& input,
 		const Vector2& position, float rotation)override;
+	// 点包含判定：点到骨架线段的最短距离 ≤ R
+	bool TestPoint(const Vector2& localPoint) const;
 	AABB computeAABB(Vector2 pos, float angle);
 	float getSweepRadius() const;
 	// 获取局部骨架端点 (默认沿 Y 轴分布)

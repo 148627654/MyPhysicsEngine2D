@@ -137,3 +137,22 @@ AABB Capsule::computeAABB(Vector2 pos, float angle)
 
     return AABB(minPoint, maxPoint);
 }
+// 点包含判定：点到骨架线段的最短距离 <= R
+bool Capsule::TestPoint(const Vector2& localPoint) const
+{
+    Vector2 A = getLocalSegmentA(); // (0, -L/2)
+    Vector2 B = getLocalSegmentB(); // (0, +L/2)
+    Vector2 AB = B - A;
+    float lenSq = AB.lengthSquared();
+
+    // 线段投影参数 t = clamp((P - A)·AB / |AB|², 0, 1)
+    float t = 0.0f;
+    if (lenSq > 1e-12f)
+    {
+        t = AB.dot(localPoint - A) / lenSq;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+    }
+    Vector2 closest = A + AB * t;
+    return (localPoint - closest).lengthSquared() <= m_radius * m_radius;
+}

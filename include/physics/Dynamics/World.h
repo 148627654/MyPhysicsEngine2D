@@ -11,6 +11,8 @@
 #include "Island.h"
 #include "../Utils/Profiler.h"
 #include "../Events/ContactListener.h"
+#include "../Events/QueryCallback.h"
+#include "../Collision/RayCastHit.h"
 #include "Joint.h"
 /// @brief 物理世界：引擎的总入口
 ///
@@ -51,7 +53,22 @@ public:
 	/// 工厂：创建胶囊刚体（Capsule）
 	Body* createCapsule(float radius, float length, float x, float y, float density,
 		const Physics2D::Material& mat = Physics2D::Material());
-	void rayCast(Vector2 p1, Vector2 p2);
+
+	// ================= 空间查询 API（玩法驱动：射击/AOE/拾取）=================
+	/// 高精度射线检测：寻找最近阻挡。命中后动态收缩射线，宽相树整棵子树剪枝
+	/// （传感器默认不阻挡；outHit 为 nullptr 时仅返回是否命中）
+	bool RayCast(const Vector2& p1, const Vector2& p2, RayCastHit* outHit,
+		bool ignoreSensors = true) const;
+	/// 高精度射线检测：自定义多重回调（返回值控制 终止=0 / 收缩找最近=fraction / 穿透=1）
+	void RayCast(const Vector2& p1, const Vector2& p2, RayCastCallback* callback) const;
+	/// 区域 AABB 重叠检索（O(log N) 肥 AABB 判定）：回调版（ReportBody 返回 false 提前终止）
+	void QueryAABB(const AABB& aabb, QueryCallback* callback) const;
+	/// 区域 AABB 重叠检索：便捷容器版（收集全部，传感器默认排除）
+	std::vector<Body*> QueryAABB(const AABB& aabb, bool ignoreSensors = true) const;
+	/// 点选拾取：动态刚体优先，其次最先发现的静态刚体（传感器默认排除）
+	Body* TestPoint(const Vector2& point, bool ignoreSensors = true) const;
+	/// 点选拾取：获取该点重叠的所有刚体（含传感器）
+	std::vector<Body*> TestPointAll(const Vector2& point) const;
 	void removeBody(Body* body);
 	// 延迟销毁：可在接触回调中安全调用，物体在本帧 step 末尾（或下帧开头）真正移除
 	void destroyBody(Body* body);

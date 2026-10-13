@@ -34,6 +34,8 @@ public:
 	virtual AABB computeAABB(Vector2 pos , float angle) = 0;
 	virtual bool rayCast(RayCastOutput* output, RayCastInput& input,
 		const Vector2& position, float rotation) = 0;
+	// 点包含判定：点是否在形状内部（局部坐标系下，供点选拾取精确判定）
+	virtual bool TestPoint(const Vector2& localPoint) const = 0;
 	// 获取形状的扫掠半径（中心到最远点的距离）
 	virtual float getSweepRadius() const = 0;
 

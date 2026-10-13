@@ -427,47 +427,149 @@ void World::buildAndSolveIslands(float dt) {
     }
 }
 
-void World::rayCast(Vector2 p1, Vector2 p2) {
+// ================= 空间查询 API（RayCast / QueryAABB / TestPoint）=================
+namespace {
+// 最近命中回调：命中后返回 fraction 收缩射线（动态剪枝找最近），传感器按需穿透
+class ClosestHitCallback : public RayCastCallback {
+public:
+	explicit ClosestHitCallback(bool ignoreSensors) : m_ignoreSensors(ignoreSensors) {}
+	float ReportHit(Body* body, Shape* shape, const Vector2& point,
+		const Vector2& normal, float fraction) override {
+		if (m_ignoreSensors && shape->isTrigger) return 1.0f; // 传感器不阻挡，继续穿透
+		m_hit.body = body;
+		m_hit.shape = shape;
+		m_hit.point = point;
+		m_hit.normal = normal;
+		m_hit.fraction = fraction;
+		m_found = true;
+		return fraction; // 收缩射线：树层剪枝后方所有更远候选
+	}
+	RayCastHit m_hit;
+	bool m_found = false;
+private:
+	bool m_ignoreSensors;
+};
+
+// 区域查询收集回调：传感器按需过滤
+class CollectQueryCallback : public QueryCallback {
+public:
+	explicit CollectQueryCallback(bool ignoreSensors) : m_ignoreSensors(ignoreSensors) {}
+	bool ReportBody(Body* body) override {
+		if (m_ignoreSensors && body->getShape()->isTrigger) return true;
+		m_bodies.push_back(body);
+		return true;
+	}
+	std::vector<Body*> m_bodies;
+private:
+	bool m_ignoreSensors;
+};
+} // namespace
+
+void World::RayCast(const Vector2& p1, const Vector2& p2, RayCastCallback* callback) const
+{
+	if (callback == nullptr) return;
+
 	RayCastInput input;
 	input.p1 = p1;
 	input.p2 = p2;
 	input.maxFraction = 1.0f;
 
-	// 局部变量：用来追踪查询过程中的最近距离
-	// 虽然函数不返回结果，但我们在内部可以通过它来优化树的搜索
-	float closestFraction = 1.0f;
+	// 查询在逻辑上只读宽相树，const 接口内部借用非 const 引用（Box2D 同款做法）
+	BroadPhase* broadPhase = const_cast<BroadPhase*>(&m_broadPhase);
+	broadPhase->rayCast(input, [&](RayCastInput& subInput, int32_t proxyId) -> float {
+		Body* body = static_cast<Body*>(broadPhase->getUserData(proxyId));
+		Shape* shape = body->getShape();
 
-	// 定义宽相回调：树发现射线经过了某个 AABB
-	auto broadPhaseCallback = [&](RayCastInput& subInput, int32_t proxyId) -> float {
-		// 1. 获取 Body
-		void* userData = m_broadPhase.getUserData(proxyId);
-		Body* body = static_cast<Body*>(userData);
-
-		// 2. 执行真正的窄相检测 (Box 或 Circle 的 rayCast)
+		// 窄相精确求交（形状层几何判定）；肥 AABB 边缘擦过则无真实命中
 		RayCastOutput output;
-		bool hit = body->getShape()->rayCast(&output, subInput, body->getPosition(), body->getRotation());
+		if (!shape->rayCast(&output, subInput, body->getPosition(), body->getRotation()))
+			return 1.0f;
 
-		if (hit) {
-			// 3. 既然撞到了真实的形状，我们打印详细信息
-			printf("[RAY HIT] Body at (%f, %f)\n", body->getPosition().getX(), body->getPosition().getY());
-			printf("          Fraction: %f\n", output.fraction);
-			printf("          Normal: (%f, %f)\n", output.normal.getX(), output.normal.getY());
+		// 撞击点世界坐标 P = p1 + t·d
+		Vector2 d = subInput.p2 - subInput.p1;
+		Vector2 point = subInput.p1 + d * output.fraction;
+		return callback->ReportHit(body, shape, point, output.normal, output.fraction);
+	});
+}
 
-			// 4. 更新最近距离
-			closestFraction = output.fraction;
+bool World::RayCast(const Vector2& p1, const Vector2& p2, RayCastHit* outHit,
+	bool ignoreSensors) const
+{
+	ClosestHitCallback callback(ignoreSensors);
+	RayCast(p1, p2, &callback);
+	if (callback.m_found && outHit != nullptr)
+		*outHit = callback.m_hit;
+	return callback.m_found;
+}
 
-			// 5. 返回当前撞击的比例。
-			// 这是一个巨大的优化：树接收到这个值后，会自动“剪枝”，
-			// 之后它只会去检查比这个点更近的 AABB 分支。
-			return output.fraction;
+void World::QueryAABB(const AABB& aabb, QueryCallback* callback) const
+{
+	if (callback == nullptr) return;
+
+	BroadPhase* broadPhase = const_cast<BroadPhase*>(&m_broadPhase);
+	broadPhase->query(aabb, [&](int32_t proxyId) -> bool {
+		Body* body = static_cast<Body*>(broadPhase->getUserData(proxyId));
+		return callback->ReportBody(body); // false 提前终止区域搜索
+	});
+}
+
+std::vector<Body*> World::QueryAABB(const AABB& aabb, bool ignoreSensors) const
+{
+	CollectQueryCallback callback(ignoreSensors);
+	QueryAABB(aabb, &callback);
+	return callback.m_bodies;
+}
+
+Body* World::TestPoint(const Vector2& point, bool ignoreSensors) const
+{
+	// 退化 AABB 技巧：把测试点封装为 ε 微小盒，O(log N) 过滤出极少数候选代理
+	AABB queryBox;
+	const float eps = 1e-4f;
+	queryBox.min = point - Vector2(eps, eps);
+	queryBox.max = point + Vector2(eps, eps);
+
+	CollectQueryCallback candidates(false); // 候选不过滤传感器，几何精判时再过滤
+	QueryAABB(queryBox, &candidates);
+
+	Body* bestDynamic = nullptr;
+	Body* bestStatic = nullptr;
+	for (Body* body : candidates.m_bodies) {
+		Shape* shape = body->getShape();
+		if (ignoreSensors && shape->isTrigger) continue;
+
+		// 世界点 → 刚体局部坐标（逆变换），再做形状层几何精判
+		Vector2 localPoint = (point - body->getPosition()).rotate(-body->getRotation());
+		if (!shape->TestPoint(localPoint)) continue;
+
+		// 拾取优先级：动态刚体优先（游戏交互惯例），同类取先发现的
+		if (body->getInvMass() > 0.0f) {
+			if (bestDynamic == nullptr) bestDynamic = body;
 		}
+		else {
+			if (bestStatic == nullptr) bestStatic = body;
+		}
+	}
+	return bestDynamic != nullptr ? bestDynamic : bestStatic;
+}
 
-		// 没撞到具体的形状（只是经过了肥包围盒的边缘），继续寻找下一个
-		return 1.0f;
-		};
+std::vector<Body*> World::TestPointAll(const Vector2& point) const
+{
+	std::vector<Body*> result;
 
-	// 6. 调用宽相进行全局扫描
-	m_broadPhase.rayCast(input, broadPhaseCallback);
+	AABB queryBox;
+	const float eps = 1e-4f;
+	queryBox.min = point - Vector2(eps, eps);
+	queryBox.max = point + Vector2(eps, eps);
+
+	CollectQueryCallback candidates(false);
+	QueryAABB(queryBox, &candidates);
+
+	for (Body* body : candidates.m_bodies) {
+		Vector2 localPoint = (point - body->getPosition()).rotate(-body->getRotation());
+		if (body->getShape()->TestPoint(localPoint))
+			result.push_back(body);
+	}
+	return result;
 }
 
 void World::wakeNeighbors(Body* body)

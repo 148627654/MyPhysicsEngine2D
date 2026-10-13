@@ -29,6 +29,10 @@ public:
 	void rayCast(RayCastInput& input, std::function<float(RayCastInput&, int32_t)> callback) {
 		m_tree.rayCast(input, callback);
 	}
+	// 区域 AABB 重叠检索（回调返回 false 提前终止遍历）
+	void query(const AABB& aabb, std::function<bool(int32_t)> callback) {
+		m_tree.query(aabb, callback);
+	}
 	bool testOverlap(int32_t proxyIdA, int32_t proxyIdB) const;
 	void* getUserData(int32_t proxyId) const {
 		return m_tree.getUserData(proxyId);

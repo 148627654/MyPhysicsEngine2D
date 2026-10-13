@@ -12,6 +12,8 @@ public:
 	MassData computeMass(float density) override;
 	bool rayCast(RayCastOutput* output, RayCastInput& input,
 		const Vector2& position, float rotation);
+	// 点包含判定：局部坐标轴对齐范围 |Px| ≤ hw 且 |Py| ≤ hh
+	bool TestPoint(const Vector2& localPoint) const;
 
 	//获取长和宽
 	float getWidth()const { return width; }

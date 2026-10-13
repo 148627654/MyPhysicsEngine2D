@@ -21,6 +21,8 @@ public:
 	AABB computeAABB(Vector2 pos, float angle);
 	bool rayCast(RayCastOutput* output, RayCastInput& input,
 		const Vector2& position, float rotation);
+	// 点包含判定：点位于所有边缘外法线内侧（半空间交集）(P - Vi)·ni ≤ 0
+	bool TestPoint(const Vector2& localPoint) const;
 	inline Vector2 getNormal(int i) const { return m_normals[i]; }
 private:
 	Vector2 m_vertices[MAX_VERTICES];

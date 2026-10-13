@@ -142,3 +142,10 @@ float Box::getSweepRadius() const
     float hh = height * 0.5f;
     return std::sqrt(hw * hw + hh * hh);
 }
+
+// 点包含判定：局部坐标系轴对齐范围 |Px| <= hw 且 |Py| <= hh
+bool Box::TestPoint(const Vector2& localPoint) const
+{
+    return std::abs(localPoint.getX()) <= width * 0.5f &&
+        std::abs(localPoint.getY()) <= height * 0.5f;
+}

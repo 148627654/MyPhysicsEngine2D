@@ -260,3 +260,15 @@ bool Polygon::rayCast(RayCastOutput* output, RayCastInput& input,
     return false;
 }
 
+
+// 点包含判定：点必须位于所有边缘外法线的内侧（半空间交集）
+// (P - Vi)·ni <= 0 对所有边 i 成立（凸多边形全法线判定）
+bool Polygon::TestPoint(const Vector2& localPoint) const
+{
+    for (int i = 0; i < m_count; ++i)
+    {
+        if ((localPoint - m_vertices[i]).dot(m_normals[i]) > 0.0f)
+            return false; // 点落在某条边的外侧半空间
+    }
+    return true;
+}

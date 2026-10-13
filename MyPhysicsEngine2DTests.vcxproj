@@ -103,6 +103,7 @@
     <ClCompile Include="googleTest\V4_006.cpp" />
     <ClCompile Include="googleTest\V4_007.cpp" />
     <ClCompile Include="googleTest\V4_008.cpp" />
+    <ClCompile Include="googleTest\V4_009.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

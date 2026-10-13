@@ -15,6 +15,8 @@ public:
 	float getR()const { return radius; }
 	bool rayCast(RayCastOutput* output, RayCastInput& input,
 		const Vector2& position, float rotation);
+	// 点包含判定：点到圆心的距离平方 ≤ R²
+	bool TestPoint(const Vector2& localPoint) const;
 	float getSweepRadius() const { return getR(); }
 private:
 	float radius;
