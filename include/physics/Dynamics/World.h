@@ -98,7 +98,7 @@ private:
 	void updateNeighborsTOI(Body* b, float dt);
 	void handleNewCollision(void* uA, void* uB, float dt);
 	void updateBroadPhase(float dt);
-	// 清理已经完全分离的接触对（AABB 不再重叠）
+	// 清理已经完全分离的接触对（AABB 不再重叠；涉及 Bullet 的对用扫掠 AABB 判分离）
 	void destroySeparatedContacts();
 	// 处理延迟销毁队列（把 destroyBody 排队的物体真正移除）
 	void flushDestroyQueue();

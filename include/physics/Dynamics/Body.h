@@ -132,6 +132,8 @@ public:
 	void setType(BodyType type, float density = 1.0f);
 	void forceSleep();
 	AABB getSweptAABB(float dt)const;
+	// CCD 轨迹 AABB：联合本帧起始 (P0) 与当前 (P1) 位姿的包围盒（TOI 插值区间）
+	AABB getTrajectoryAABB() const;
 	void setBullet(bool flag) { m_isBullet = flag; }
 	bool isBullet() const { return m_isBullet; }
 	Transform getTransform(float alpha, float dt=Settings::DT);

@@ -56,6 +56,13 @@ void World::step(float dt) {
 
             b->clearForce(); b->torque = 0.0f;
         }
+
+        // [CCD fix] éæ/ç¡ç åä½æ¬å¸§ä¸ç§¯åï¼ä½å¶ prev ç¶æå¿é¡»ä¸å½åä¸è´ââ
+        // åå»ºåæ setRotation çéæåä½ prevRotation åçå¨æé å¼ 0ï¼
+        // getTransform(alpha) ä¼ææè½¬æå¼æ Î±Â·Î¸ çéè¯¯å§¿æï¼æå¢ TOI æ³çº¿åéï¼
+        for (Body* b : m_bodies) {
+            if (b->getInvMass() == 0.0f || !b->isAwake()) b->savePrevState();
+        }
     }
     
 
@@ -64,8 +71,15 @@ void World::step(float dt) {
         for (Body* b : m_bodies) {
             if (b->getInvMass() == 0.0f || !b->isAwake()) continue;
             b->updateAABB();
-            AABB bpAABB = b->isBullet() ? b->getSweptAABB(currentDt) : b->getAABB();
-            m_broadPhase.moveProxy(b->getProxyId(), bpAABB, b->velocity * currentDt);
+            // [CCD fix] Bullet 代理用轨迹 AABB（P0->P1，TOI 插值区间）而非
+            // 前向预测扫掠（P1->P2）：高速子弹积分后已越过薄墙时，前向预测
+            // 落在墙另一侧 -> 宽相永不配对 -> CCD 无对可查 -> 幽灵穿墙。
+            // 同时代理位移传零：轨迹盒已覆盖全程，再按 v·dt×2 拉长会一次
+            // 覆盖到未来路径上，moveProxy 永远"包含"新盒不再触发 ->
+            // updatePairs 只查移动过的代理 -> 配对同样失效
+            AABB bpAABB = b->isBullet() ? b->getTrajectoryAABB() : b->getAABB();
+            m_broadPhase.moveProxy(b->getProxyId(), bpAABB,
+                b->isBullet() ? Vector2(0.0f, 0.0f) : b->velocity * currentDt);
         }
         };
 
@@ -93,57 +107,74 @@ void World::step(float dt) {
 
     {
         ScopedTimer timer(m_profiler, "3. CCD");
-        // --- 4. [CCD 核心迭代] ---
-        float remainingDt = dt;
-        for (int subStep = 0; subStep < 4; ++subStep) {
-            Contact* earliest = nullptr;
-            TOIOutput bestOutput;
-            float minAlpha = 1.0f;
-
-            for (auto const& pair : m_contactMap) {
-                Contact* c = pair.second;
-                if (!c->m_bodyA->isBullet() && !c->m_bodyB->isBullet()) continue;
-                // 重新算 TOI，确保使用当前缩短后的 remainingDt
-                TOIInput input;
-                input.bodyA = c->m_bodyA; input.bodyB = c->m_bodyB;
-                input.dt = remainingDt; input.tolerance = 0.001f;
-                TOIOutput out = TimeOfImpact::solve(input);
-                if (out.state == TOIOutput::Hit && out.alpha < minAlpha) {
-                    minAlpha = out.alpha; earliest = c; bestOutput = out;
-                }
+        // --- 早退守卫（性能防线）：场景中无任何活动的 Bullet 刚体时直接跳过
+        //     整个 CCD 子步迭代——普通刚体场景维持严格零性能损耗（O(1) 开销）---
+        bool hasActiveBullet = false;
+        for (Body* b : m_bodies) {
+            if (b->getInvMass() > 0.0f && b->isAwake() && b->isBullet()) {
+                hasActiveBullet = true;
+                break;
             }
+        }
 
-            if (earliest && minAlpha < 1.0f) {
-                Body* bA = earliest->m_bodyA; Body* bB = earliest->m_bodyB;
+        // --- 4. [CCD 核心迭代] 多子步探测循环（最多 4 次子步）---
+        if (hasActiveBullet) {
+            float remainingDt = dt;
+            for (int subStep = 0; subStep < 4; ++subStep) {
+                Contact* earliest = nullptr;
+                TOIOutput bestOutput;
+                float minAlpha = 1.0f;
 
-                // A. 回溯到撞击瞬间
-                float safeAlpha = std::max(0.0f, minAlpha - 0.01f);
-                bA->setTransform(bA->getTransform(safeAlpha, remainingDt));
-                bB->setTransform(bB->getTransform(safeAlpha, remainingDt));
-
-                // B. 使用 TOI 提供的法线强制反弹 (VN 计算是关键)
-                Vector2 n = bestOutput.normal; // TOI 传回的法线
-                Vector2 vRel = bA->velocity - bB->velocity;
-                float vn = vRel.dot(n);
-
-                if (vn > 0.0f) { // 如果正在接近墙 (vA->右, n->右, 点积为正)
-                    float e = 0.5f;
-                    float j = (1.0f + e) * vn / (bA->getInvMass() + bB->getInvMass());
-                    bA->velocity -= n * (j * bA->getInvMass());
-                    bB->velocity += n * (j * bB->getInvMass());
-                    //Logger::info(">>> [CCD] BOUNCE! New VelX: " + std::to_string(bA->velocity.getX()));
+                for (auto const& pair : m_contactMap) {
+                    Contact* c = pair.second;
+                    if (!c->m_bodyA->isBullet() && !c->m_bodyB->isBullet()) continue;
+                    // 【传感器过滤】触发器只产生接触信息，穿透触发但不可反弹
+                    if (c->isTrigger()) continue;
+                    // 重新算 TOI，确保使用当前缩短后的 remainingDt
+                    TOIInput input;
+                    input.bodyA = c->m_bodyA; input.bodyB = c->m_bodyB;
+                    input.dt = remainingDt; input.tolerance = 0.001f;
+                    TOIOutput out = TimeOfImpact::solve(input);
+                    if (out.state == TOIOutput::Hit && out.alpha < minAlpha) {
+                        minAlpha = out.alpha; earliest = c; bestOutput = out;
+                    }
                 }
 
+                if (earliest && minAlpha < 1.0f) {
+                    Body* bA = earliest->m_bodyA; Body* bB = earliest->m_bodyB;
 
-                // C. 【关键】：同步 P0 并消耗时间
-                for (Body* b : m_bodies) b->savePrevState();
-                remainingDt *= (1.0f - minAlpha);
+                    // A. 位置回溯：拉回撞击瞬间。留 0.01 微小安全缝隙——
+                    //    直接回溯到精确相切点会因浮点误差被误判"初始即重叠"而陷入死锁
+                    float safeAlpha = std::max(0.0f, minAlpha - 0.01f);
+                    bA->setTransform(bA->getTransform(safeAlpha, remainingDt));
+                    bB->setTransform(bB->getTransform(safeAlpha, remainingDt));
 
-                // D. 为下一轮子步刷新宽相和 TOI
-                syncBP(remainingDt);
-                updateAllContactsAndTOI(remainingDt);
+                    // B. 法向冲量反弹（TOI 传回第一手法线，n 由 A 指向 B）：
+                    //    vn = (vA - vB)·n > 0 才是在迎头接近，严禁分离态重复反弹
+                    Vector2 n = bestOutput.normal;
+                    Vector2 vRel = bA->velocity - bB->velocity;
+                                        float vn = vRel.dot(n);
+
+                    if (vn > 0.0f) {
+                        // 结合两刚体材质弹性恢复系数（引擎 Material::Combine，默认取最大值）
+                        float e = Physics2D::Material::combine(
+                            bA->getRestitution(), bB->getRestitution(),
+                            bA->getShape()->material.restitutionCombine);
+                        float j = (1.0f + e) * vn / (bA->getInvMass() + bB->getInvMass());
+                        bA->velocity -= n * (j * bA->getInvMass());
+                        bB->velocity += n * (j * bB->getInvMass());
+                    }
+
+                    // C. 【关键】：同步 P0 并消耗时间片，开启下一轮子步
+                    for (Body* b : m_bodies) b->savePrevState();
+                    remainingDt *= (1.0f - minAlpha);
+
+                    // D. 为下一轮子步刷新宽相和 TOI
+                    syncBP(remainingDt);
+                    updateAllContactsAndTOI(remainingDt);
+                }
+                else break;
             }
-            else break;
         }
     }
     
@@ -687,9 +718,25 @@ void World::destroySeparatedContacts() {
         Body* bA = c->m_bodyA;
         Body* bB = c->m_bodyB;
         if (!c->isTouching() && !Collision::aabbVsAabb(bA->getAABB(), bB->getAABB())) {
-            removeContactFromGraph(c);
-            delete c;
-            it = m_contactMap.erase(it);
+            // [CCD fix] Bullet pairs use trajectory AABB (P0->P1) to judge separation:
+            // a fast bullet's discrete position may already be past a thin wall (tight AABBs
+            // no longer overlap), but its trajectory this frame still pierces the wall. Judging
+            // separation by tight AABB would destroy the pair before the CCD loop runs,
+            // leaving CCD with no candidate -> ghost tunneling through the wall
+            bool sweptOverlap = false;
+            if (bA->isBullet() || bB->isBullet()) {
+                AABB sweptA = bA->isBullet() ? bA->getTrajectoryAABB() : bA->getAABB();
+                AABB sweptB = bB->isBullet() ? bB->getTrajectoryAABB() : bB->getAABB();
+                sweptOverlap = Collision::aabbVsAabb(sweptA, sweptB);
+            }
+            if (!sweptOverlap) {
+                removeContactFromGraph(c);
+                delete c;
+                it = m_contactMap.erase(it);
+            }
+            else {
+                ++it;
+            }
         }
         else {
             ++it;
