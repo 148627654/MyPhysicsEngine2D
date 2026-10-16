@@ -29,6 +29,8 @@ public:
 
     // 计数器接口（记录物体数量、碰撞对数量等）
     void setCounter(const std::string& name, int value);
+    // getCounter: read a counter (0 when absent)
+    int getCounter(const std::string& name) const;
 
 private:
     std::map<std::string, ProfileRecord> m_records;

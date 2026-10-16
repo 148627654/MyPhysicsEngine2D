@@ -162,6 +162,25 @@ def.enableWarmStart = true;     // 热启动
 | `getMotorTorque(dt)` | 本帧马达等效扭矩 |
 | `setMotorSpeed / setMaxMotorTorque / enableMotor / enableLimit` | 运行时控制 |
 
+### 5.3 11 种关节参数速查表（V4 全家族）
+
+统一装配约定：`localAnchor = (worldAnchor − body->getPosition()).rotate(−body->getRotation())`。
+**机械铁律**：关节直连且几何相邻的构件必须 `collideConnected = false`，严禁关节内部互推。
+
+| 关节 | 类型 | 关键 Def 参数 | 运行时 API | 备注 |
+|---|---|---|---|---|
+| DistanceJoint | 1-DOF 杆 | length、frequencyHz/dampingRatio（>0 变软弹簧） | — | 刚性杆 / 隐式软弹簧 |
+| SpringJoint | 软弹簧 | length、frequencyHz、dampingRatio | — | 纯柔性 |
+| RevoluteJoint | 1-DOF 角 | referenceAngle、enableLimit/lowerAngle/upperAngle、enableMotor/motorSpeed/maxMotorTorque | setMotorSpeed/setMaxMotorTorque/enableMotor/enableLimit/getJointAngle/getMotorTorque(dt) | 销钉 + 限位 + 马达 |
+| WeldJoint | 3-DOF 全锁 | referenceAngle | — | 刚性焊接 |
+| PrismaticJoint | 1-DOF 滑轨 | localAxisA、referenceAngle、enableLimit/lower/upperTranslation、enableMotor/motorSpeed/maxMotorForce | setMotorSpeed/setMaxMotorForce/enableMotor/getJointTranslation/getMotorForce(dt) | 滑块 + 限位 + 马达 |
+| FrictionJoint | 有界耗散 | maxForce、maxTorque | — | 库仑摩擦（角度+平移） |
+| RopeJoint | 不等式绳 | maxLength | setMaxLength/getMaxLength/getImpulse/getState | λ≤0 单向拉力，松弛零冲量 |
+| PulleyJoint | 滑轮组 | groundAnchorA/B、ratio | getLengthA/getLengthB/getRatio | 绳长恒等式 L=lenA+ratio·lenB；平衡条件 mB=ratio·mA |
+| GearJoint | 关节耦合 | joint1/joint2（父关节）、ratio | getRatio | C=coord1+ratio·coord2；父销毁自动级联 |
+| WheelJoint | 2-DOF 轴 + 1-DOF 马达 | localAxisA（默认向下）、enableMotor/motorSpeed/maxMotorTorque、Initialize() 助手 | setMotorSpeed/setMaxMotorTorque/enableMotor/getMotorTorque(dt) | 刚性硬悬挂，绝对不脱轴 |
+| MouseJoint | 2-DOF 软拖拽 | target、maxForce、frequencyHz、dampingRatio | setTarget/getTarget/setMaxForce/getForce(dt) | 库仑圆盘限幅；位置求解旁路 |
+
 ---
 
 ## 6. 接触事件（推送式回调）
@@ -184,14 +203,43 @@ world.setContactListener(&listener);
 
 ## 7. 查询与诊断
 
+### 7.1 世界级空间查询 API（V4）
+
+```cpp
+// ① 高精度射线检测（枪械射击 / 视线扫描 / 地面探测）
+RayCastHit hit;
+bool ok = world.RayCast(p1, p2, &hit, /*ignoreSensors=*/true); // 最近阻挡
+//   hit.body / hit.shape / hit.point / hit.normal / hit.fraction ∈ [0,1]
+world.RayCast(p1, p2, &myCallback);   // 自定义多重回调
+//   RayCastCallback::ReportHit 返回值：0=终止 / fraction=收缩找最近 / 1=穿透找全部
+
+// ② 区域重叠检索（AOE 爆炸 / 感知视野 / 触发器探测），O(log N)
+std::vector<Body*> inRange = world.QueryAABB(aabb, /*ignoreSensors=*/true);
+world.QueryAABB(aabb, &myQueryCallback); // ReportBody 返回 false 提前终止
+
+// ③ 点选拾取（编辑器鼠标点选 / UI 交互），O(log N) 退化 AABB 技巧
+Body* picked = world.TestPoint(point, /*ignoreSensors=*/true); // 动态刚体优先
+std::vector<Body*> all = world.TestPointAll(point);            // 该点重叠的全部刚体
+```
+
+注意：`QueryAABB`/`TestPoint` 的候选基于宽相肥 AABB（±0.1 扩展）——边界附近可能多报近邻刚体，精确判定需再用 `shape->TestPoint(localPoint)` 或紧 AABB 复核。
+
+### 7.2 CCD 连续碰撞（V4）
+
+| API | 说明 |
+|---|---|
+| `body->setBullet(true) / isBullet()` | 高速刚体标记（扫掠轨迹 + TOI 子步回溯，100% 拦截薄墙） |
+| `world.getProfiler().getCounter("CCD TOI Solves")` | 本帧实际执行的 TOI 求解次数（无 Bullet 场景恒为 0 = 零开销） |
+
+### 7.3 其他诊断
+
 | 方法 | 说明 |
 |---|---|
-| `world.rayCast(p1, p2)` | 射线检测（打印命中信息） |
 | `world.getBodies()` | 所有刚体 |
 | `world.getIslands()` | 本帧岛屿（`getBodyCount() / getJointCount()` 检查连通性） |
 | `world.getJointCount()` | 关节数量 |
 | `world.getContactMap()` | 活跃接触对 |
-| `world.getProfiler()` | 性能分析器（`printReport()`） |
+| `world.getProfiler()` | 性能分析器（`printReport()` / `GetRecords()` / `getCounter()`） |
 | `Logger::info(...)` | 日志输出 |
 
 ---

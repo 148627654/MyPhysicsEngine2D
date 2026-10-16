@@ -32,6 +32,7 @@ void World::step(float dt) {
     // 处理上一帧之后外部（如回调中）调用的 destroyBody
     flushDestroyQueue();
     m_profiler.beginFrame();
+    m_frameTOICount = 0; // 本帧 TOI 求解计数清零
     // --- 统计计数器 ---
     int awakeCount = 0;
     for (Body* b : m_bodies) if (b->isAwake()) awakeCount++;
@@ -134,6 +135,7 @@ void World::step(float dt) {
                     TOIInput input;
                     input.bodyA = c->m_bodyA; input.bodyB = c->m_bodyB;
                     input.dt = remainingDt; input.tolerance = 0.001f;
+                    ++m_frameTOICount; // 统计实际执行的 TOI 求解（零开销验收）
                     TOIOutput out = TimeOfImpact::solve(input);
                     if (out.state == TOIOutput::Hit && out.alpha < minAlpha) {
                         minAlpha = out.alpha; earliest = c; bestOutput = out;
@@ -178,6 +180,8 @@ void World::step(float dt) {
         }
     }
     
+    m_profiler.setCounter("CCD TOI Solves", m_frameTOICount);
+
     {
         ScopedTimer timer(m_profiler, "4. Island Solver");
         // 5. 最后执行离散解算（处理普通碰撞和堆叠）
@@ -621,7 +625,8 @@ void World::wakeNeighbors(Body* body)
 
 void World::updateTOI(Contact* c, float dt) {
     if (!c->m_bodyA->isBullet() && !c->m_bodyB->isBullet()) return;
-    
+        ++m_frameTOICount;
+
     TOIInput input;
     input.bodyA = c->m_bodyA;
     input.bodyB = c->m_bodyB;
@@ -717,26 +722,17 @@ void World::destroySeparatedContacts() {
         Contact* c = it->second;
         Body* bA = c->m_bodyA;
         Body* bB = c->m_bodyB;
-        if (!c->isTouching() && !Collision::aabbVsAabb(bA->getAABB(), bB->getAABB())) {
-            // [CCD fix] Bullet pairs use trajectory AABB (P0->P1) to judge separation:
-            // a fast bullet's discrete position may already be past a thin wall (tight AABBs
-            // no longer overlap), but its trajectory this frame still pierces the wall. Judging
-            // separation by tight AABB would destroy the pair before the CCD loop runs,
-            // leaving CCD with no candidate -> ghost tunneling through the wall
-            bool sweptOverlap = false;
-            if (bA->isBullet() || bB->isBullet()) {
-                AABB sweptA = bA->isBullet() ? bA->getTrajectoryAABB() : bA->getAABB();
-                AABB sweptB = bB->isBullet() ? bB->getTrajectoryAABB() : bB->getAABB();
-                sweptOverlap = Collision::aabbVsAabb(sweptA, sweptB);
-            }
-            if (!sweptOverlap) {
-                removeContactFromGraph(c);
-                delete c;
-                it = m_contactMap.erase(it);
-            }
-            else {
-                ++it;
-            }
+        // [engine bug fix] Use broadphase FAT AABBs (Box2D-style) instead of tight AABBs:
+        // tight-AABB destruction kills the pair on a tiny separation (< 0.1m fat margin), but
+        // both proxies keep oscillating inside their stored fat AABBs -> moveProxy never
+        // fires -> updatePairs only re-queries moved proxies -> the pair is never re-created
+        // -> a passenger/cargo falling back passes straight through the platform
+        // (root cause of the elevator-limit free-fall-through-car bug)
+        if (!c->isTouching() &&
+            !m_broadPhase.testOverlap(bA->getProxyId(), bB->getProxyId())) {
+            removeContactFromGraph(c);
+            delete c;
+            it = m_contactMap.erase(it);
         }
         else {
             ++it;

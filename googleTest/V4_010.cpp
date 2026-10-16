@@ -108,11 +108,11 @@ TEST(V4_010, ZeroOverheadRegression) {
     EXPECT_FALSE(hasNaN);
 
     // CCD 早退守卫生效：无任何 Bullet 刚体时整个 CCD 阶段被 O(1) 跳过，
-    // 耗时维持 0.00 ms（本帧累计 + 历史峰值双重断言）
+    // 耗时维持 0.00 ms。TOI 求解计数 == 0 为确定性铁证（墙钟峰值随机器
+    // 负载波动，不做峰值断言）
+    EXPECT_EQ(world.getProfiler().getCounter("CCD TOI Solves"), 0);
     const auto& records = world.getProfiler().GetRecords();
     auto it = records.find("3. CCD");
     ASSERT_NE(it, records.end());
     EXPECT_LT(it->second.accumulatedTime, 0.01f); // 本帧 CCD 阶段 0.00 ms
-    // 历史峰值 0.05 容差：首帧冷缓存/页错误尖峰 ~0.01ms，稳态帧恒为 0.00 ms
-    EXPECT_LT(it->second.maxTime, 0.05f);
 }

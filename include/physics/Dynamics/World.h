@@ -111,6 +111,7 @@ private:
 	std::vector<Body*> m_destroyQueue; // 延迟销毁队列（回调中 destroyBody 安全）
 	std::vector<Island> m_islands; // 每帧构建的岛屿集合（供测试检查连通性）
 	Profiler m_profiler;
+	int m_frameTOICount = 0; // 本帧实际执行的 TOI 求解次数（CCD 零开销验收计数）
 	ContactListener* m_contactListener = nullptr; // 用户自定义的接触事件监听器
 
 	std::vector<Joint*> m_joints;

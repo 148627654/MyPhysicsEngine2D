@@ -56,6 +56,11 @@ void Profiler::setCounter(const std::string& name, int value) {
 	m_counters[name] = value;
 }
 
+int Profiler::getCounter(const std::string& name) const {
+	auto it = m_counters.find(name);
+	return (it != m_counters.end()) ? it->second : 0;
+}
+
 // 打印完整的性能分析报告
 void Profiler::printReport() {
 	std::stringstream ss;

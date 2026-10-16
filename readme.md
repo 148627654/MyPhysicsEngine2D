@@ -59,25 +59,25 @@ MyPhysicsEngine2D/
   - 实现纯 CPU 寄存器级克莱姆法则（Cramer's Rule）手搓求逆，无矩阵库依赖。
   - 实现 3D Baumgarte 速度偏置注入与 3D 冲量热启动（Warm Starting）。
   - 实现基于非线性高斯-赛德尔（NGS）的位置级姿态投影微调，彻底消除下垂变形。
-- [ ] **Day 02: 滑块关节骨架 (PrismaticJoint & Limits)**
-- [ ] **Day 03: 滑块马达与摩擦关节 (Prismatic Motor & FrictionJoint)**
-- [ ] **Day 04: 绳关节 (RopeJoint 不等式单向约束)**
+- [x] **Day 02: 滑块关节 (PrismaticJoint 与平移限位)**
+- [x] **Day 03: 滑块马达与摩擦关节 (Prismatic Motor & FrictionJoint)**
+- [x] **Day 04: 绳关节 (RopeJoint 不等式单向约束)**
 
 ### 第 2 阶段：复合传动与交互关节
-- [ ] **Day 05: 滑轮关节 (PulleyJoint 机械倍率与功守恒)**
-- [ ] **Day 06: 齿轮关节 (GearJoint 关节耦合器)**
-- [ ] **Day 07: 车轮关节 (WheelJoint 硬悬挂与底盘驱动)**
-- [ ] **Day 08: 鼠标关节 (MouseJoint 软交互与冲量限幅)**
+- [x] **Day 05: 滑轮关节 (PulleyJoint 机械倍率与功守恒)**
+- [x] **Day 06: 齿轮关节 (GearJoint 关节耦合器)**
+- [x] **Day 07: 车轮关节 (WheelJoint 硬悬挂与底盘驱动)**
+- [x] **Day 08: 鼠标关节 (MouseJoint 软交互与冲量限幅)**
 
 ### 第 3 阶段：世界查询与连续碰撞
-- [ ] **Day 09: 世界级查询 API (RayCast / QueryAABB / PointTest)**
-- [ ] **Day 10: Bullet 连续碰撞管线全贯通 (Swept AABB + TOI Sub-stepping)**
-- [ ] **Day 11: 高速穿墙极端压力测试与弹道验证**
+- [x] **Day 09: 世界级查询 API (RayCast / QueryAABB / TestPoint)**
+- [x] **Day 10: Bullet 连续碰撞管线全贯通 (Swept AABB + TOI Sub-stepping)**
+- [x] **Day 11: 高速穿墙极端压力测试与弹道验证**
 
 ### 第 4 阶段：复合场景与工程收尾
-- [ ] **Day 12: 复杂工况展示 1：电梯与起重机 (Elevator & Crane Demos)**
-- [ ] **Day 13: 复杂工况展示 2：重装战车与破坏链锤 (Tank & Flail Demos)**
-- [ ] **Day 14: 全量回归测试、文档完善与 GitHub 发布**
+- [x] **Day 12: 复杂工况展示 1：电梯与起重机 (ElevatorDemo & CraneDemo)**
+- [x] **Day 13: 复杂工况展示 2：重装战车与破坏链锤 (TankDemo & FlailDemo)**
+- [x] **Day 14: 全量回归测试、文档完善与 GitHub 发布**
 
 ---
 
@@ -184,6 +184,35 @@ K_{13} & K_{23} & K_{33}
 [INFO] CollideConnectedFilter: overlapping=1 noExplosion=1 -> PASS
 [INFO] >>> ALL TESTS PASSED <<<
 ```
+
+---
+
+## 🏁 V4 收官总结（Day 11-14）
+
+### 全量验收（GoogleTest 81/81 全绿）
+
+```text
+[==========] 81 tests from 21 test suites ran.
+[  PASSED  ] 81 tests.
+```
+
+- **Day 11 CCD 极限大考（V4_011）**：100/150 m/s 超音速子弹射击 0.1m 薄墙拦截率 100%、45° 斜墙镜面反射误差 < 1°、CCD 关闭对照（110 m/s 干净跳穿证明 CCD 不可替代）、1000 球大落塔 CCD 阶段 TOI 求解恒 0（零开销铁证）。
+- **Day 12 重工业机械（V4_012）**：电梯 Prismatic 马达 + 楼层限位（±5m）平稳停靠、100kg 乘客全程无颠簸；起重机 GearJoint 变幅传动 + PulleyJoint 2:1 省力（绳长恒等式 < 1e-4 m）。
+- **Day 13 载具与破坏（V4_013）**：双 WheelJoint 硬悬挂战车翻越 20° 陡坡驶上高原（车轮零脱轴、炮塔限位旋转）；RopeJoint + MouseJoint 链锤圆周蓄力、释放砸穿 20 块砖墙、绳索极限拉直拽住铁球。
+- **Day 14 全量回归（V4_014）**：11 种关节工厂大合体烟雾测试、布娃娃摔台阶、双摆混沌、闭环四连杆 1000 帧漂移 < 1e-3——V3 经典用例零退化。
+
+### 新增复合机械 Demo（2Ddemo/）
+
+| Demo | 机械拓扑 |
+|---|---|
+| `ElevatorDemo` | Prismatic 马达 + 楼层限位 + 载人随动（CSV 导出） |
+| `CraneDemo` | GearJoint 变幅 + PulleyJoint 2:1 滑轮组（CSV 导出） |
+| `TankDemo` | 双 WheelJoint 硬悬挂 + 炮塔 Revolute 限位（CSV 导出） |
+| `FlailDemo` | RopeJoint 链锤 + MouseJoint 拖拽抛掷砸砖墙（CSV 导出） |
+
+### 公开 API 归档
+
+完整的世界查询（RayCast / QueryAABB / TestPoint）、CCD 接口与 11 种关节参数速查表见 `docs/PublicAPI.md`。
 
 ---
 
