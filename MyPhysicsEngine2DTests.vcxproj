@@ -61,6 +61,7 @@
     <ClCompile Include="src\Collision\DynamicTree.cpp" />
     <ClCompile Include="src\Collision\Polygon.cpp" />
     <ClCompile Include="src\Collision\TimeOfImpact.cpp" />
+    <ClCompile Include="src\Common\BlockAllocator.cpp" />
     <ClCompile Include="src\Common\Vector2.cpp" />
     <ClCompile Include="src\Dynamics\Body.cpp" />
     <ClCompile Include="src\Dynamics\DistanceJoint.cpp" />
@@ -109,6 +110,7 @@
     <ClCompile Include="googleTest\V4_012.cpp" />
     <ClCompile Include="googleTest\V4_013.cpp" />
     <ClCompile Include="googleTest\V4_014.cpp" />
+    <ClCompile Include="googleTest\V5_001.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

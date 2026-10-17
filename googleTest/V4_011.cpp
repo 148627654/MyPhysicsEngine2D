@@ -164,7 +164,7 @@ TEST(V4_011, ThousandBallZeroOverhead) {
     auto it = records.find("3. CCD");
     ASSERT_NE(it, records.end());
     // 末帧 CCD 区仅剩 O(N) 标志扫描（~0.02ms，即打印值 0.00 ms）。
-    // 注意：不做 maxTime 峰值断言——墙钟峰值随机器负载波动（全量并行/后台任务），
-    // TOI 求解计数 == 0 才是"零 CCD 计算"的确定性铁证
-    EXPECT_LT(it->second.accumulatedTime, 0.05f);
+    // 注意：墙钟随机器负载波动（全量并行构建时实测到过 0.068ms），阈值放宽到 0.1ms
+    // 兜底——TOI 求解计数 == 0 才是"零 CCD 计算"的确定性铁证
+    EXPECT_LT(it->second.accumulatedTime, 0.1f);
 }
