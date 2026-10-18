@@ -45,17 +45,41 @@ void World::step(float dt) {
     {
         ScopedTimer timer(m_profiler, "1. Integration");
         // 1. 速度积分与位置预测 (P0 -> P1)
-        for (Body* b : m_bodies) {
-            if (b->getInvMass() == 0.0f || !b->isAwake()) continue;
-            Vector2 accel = b->getForce() * b->getInvMass() + m_gravity * b->getGravityScale();
-            b->velocity += accel * dt;
-            b->angularVelocity += b->torque * b->getInvInertia() * dt;
+        // [V5 Day 2] SoA 数据导向流水线：告别 Body* 指针追逐，原始指针 + 标量展开
+        // 连续推进（Debug 下也零函数调用），一条 64B 缓存行覆盖多个刚体，
+        // 并为明日 AVX2 SIMD 矢量化铺路。标量序列与旧 Vector2 运算逐位一致
+        int soaCount = m_soa.GetCount();
+        const Vector2 gravity = m_gravity;
+        Vector2* pos = m_soa.positions.data();
+        Vector2* vel = m_soa.velocities.data();
+        float* rot = m_soa.rotations.data();
+        float* angVel = m_soa.angularVels.data();
+        const float* invM = m_soa.invMasses.data();
+        const float* invI = m_soa.invInertias.data();
+        Vector2* frc = m_soa.forces.data();
+        float* trq = m_soa.torques.data();
+        const float* gs = m_soa.gravityScales.data();
+        const uint32_t* flg = m_soa.flags.data();
+        Body** owners = m_soa.bodyOwners.data();
+        const float gx = gravity.getX(), gy = gravity.getY();
+        for (int i = 0; i < soaCount; ++i) {
+            if (invM[i] == 0.0f || !(flg[i] & BodySoA::FLAG_AWAKE)) continue; // 静态/睡眠跳过
+            // accel = force * invMass + gravity * gravityScale（标量展开）
+            vel[i].x += (frc[i].x * invM[i] + gx * gs[i]) * dt;
+            vel[i].y += (frc[i].y * invM[i] + gy * gs[i]) * dt;
+            angVel[i] += trq[i] * invI[i] * dt;
 
-            b->savePrevState(); // 记录当前位置为 P0
-            b->position += b->velocity * dt; // 预测 P1
-            b->rotation += b->angularVelocity * dt;
+            Body* b = owners[i];
+            b->m_prevPosition = pos[i]; // 记录当前位置为 P0
+            b->m_prevRotation = rot[i];
 
-            b->clearForce(); b->torque = 0.0f;
+            pos[i].x += vel[i].x * dt; // 预测 P1
+            pos[i].y += vel[i].y * dt;
+            rot[i] += angVel[i] * dt;
+
+            frc[i].x = 0.0f; // 力/扭矩积分后清零（旧语义）
+            frc[i].y = 0.0f;
+            trq[i] = 0.0f;
         }
 
         // [CCD fix] éæ/ç¡ç åä½æ¬å¸§ä¸ç§¯åï¼ä½å¶ prev ç¶æå¿é¡»ä¸å½åä¸è´ââ
@@ -80,7 +104,7 @@ void World::step(float dt) {
             // updatePairs 只查移动过的代理 -> 配对同样失效
             AABB bpAABB = b->isBullet() ? b->getTrajectoryAABB() : b->getAABB();
             m_broadPhase.moveProxy(b->getProxyId(), bpAABB,
-                b->isBullet() ? Vector2(0.0f, 0.0f) : b->velocity * currentDt);
+                b->isBullet() ? Vector2(0.0f, 0.0f) : b->getVelocity() * currentDt);
         }
         };
 
@@ -154,7 +178,7 @@ void World::step(float dt) {
                     // B. 法向冲量反弹（TOI 传回第一手法线，n 由 A 指向 B）：
                     //    vn = (vA - vB)·n > 0 才是在迎头接近，严禁分离态重复反弹
                     Vector2 n = bestOutput.normal;
-                    Vector2 vRel = bA->velocity - bB->velocity;
+                    Vector2 vRel = bA->getVelocity() - bB->getVelocity();
                                         float vn = vRel.dot(n);
 
                     if (vn > 0.0f) {
@@ -163,8 +187,8 @@ void World::step(float dt) {
                             bA->getRestitution(), bB->getRestitution(),
                             bA->getShape()->material.restitutionCombine);
                         float j = (1.0f + e) * vn / (bA->getInvMass() + bB->getInvMass());
-                        bA->velocity -= n * (j * bA->getInvMass());
-                        bB->velocity += n * (j * bB->getInvMass());
+                        bA->setVelocity(bA->getVelocity() - n * (j * bA->getInvMass()));
+                        bB->setVelocity(bB->getVelocity() + n * (j * bB->getInvMass()));
                     }
 
                     // C. 【关键】：同步 P0 并消耗时间片，开启下一轮子步
@@ -351,7 +375,10 @@ void World::removeBody(Body* body) {
         m_bodies.erase(it);
     }
 
-    // 4. 最后才真正释放内存
+    // 4. [V5 Day 2] 归还 SoA 槽位（Swap-and-Pop，被挪动刚体的句柄自动同步）
+    m_soa.FreeSlot(body->m_soaIndex);
+
+    // 5. 最后才真正释放内存
     delete body;
 }
 
@@ -711,7 +738,7 @@ void World::updateBroadPhase(float dt) {
         if (b->getInvMass() == 0.0f || !b->isAwake()) continue;
         b->updateAABB();
         AABB bpAABB = b->isBullet() ? b->getSweptAABB(dt) : b->getAABB();
-        m_broadPhase.moveProxy(b->getProxyId(), bpAABB, b->velocity * dt);
+        m_broadPhase.moveProxy(b->getProxyId(), bpAABB, b->getVelocity() * dt);
     }
 }
 

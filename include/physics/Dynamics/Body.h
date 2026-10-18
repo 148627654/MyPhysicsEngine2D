@@ -1,5 +1,6 @@
 #pragma once // 记得加上这个，防止重复包含
 #include "../Common/Vector2.h"
+#include "../Common/SoABody.h"
 #include "../Collision/Shape.h"
 #include "../Common/Setting.h"
 #include <vector>
@@ -75,9 +76,9 @@ public:
 		// 初始化 AABB
 		updateAABB();
 	}
-	inline void clearForce() { force.clear(); }
+	inline void clearForce() { if (m_soa) m_soa->forces[m_soaIndex].clear(); else force.clear(); }
 	Vector2 addForce(Vector2 f);
-	
+
 	// 方便外部（如日志系统）读取数据
 	void setPosition(float x, float y);
 	void setPosition(const Vector2& v);
@@ -85,16 +86,16 @@ public:
 	void setPositionQuiet(const Vector2& v);
 	// 关节位置修正专用：静默修改角度
 	void setRotationQuiet(float r);
-	Vector2 getPosition() const { return position; }
-	Vector2 getVelocity() const { return velocity; }
+	Vector2 getPosition() const { return m_soa ? m_soa->positions[m_soaIndex] : position; }
+	Vector2 getVelocity() const { return m_soa ? m_soa->velocities[m_soaIndex] : velocity; }
 	Shape* getShape()const { return shape; };
-	float getRotation()const { return rotation; }
+	float getRotation()const { return m_soa ? m_soa->rotations[m_soaIndex] : rotation; }
 	void setRotation(float r);
-	void setVelocity(Vector2 v) { velocity = v;}
+	void setVelocity(Vector2 v) { if (m_soa) m_soa->velocities[m_soaIndex] = v; else velocity = v; }
 	AABB getAABB( )const { return worldAABB; }
-	float getAngularVelocity( )const { return angularVelocity; }
-	void setAngularVelocity(float av) { angularVelocity = av; }
-	inline float getInvInertia( )const { return invInertia; }
+	float getAngularVelocity( )const { return m_soa ? m_soa->angularVels[m_soaIndex] : angularVelocity; }
+	void setAngularVelocity(float av) { if (m_soa) m_soa->angularVels[m_soaIndex] = av; else angularVelocity = av; }
+	inline float getInvInertia( )const { return m_soa ? m_soa->invInertias[m_soaIndex] : invInertia; }
 	//绑定形状并自动计算质量属性
 	void setShape(Shape* s, float density);
 	// 重新根据 shape->material.density 计算质量属性（运行时改材质密度后调用）
@@ -102,11 +103,11 @@ public:
 	// --- 材质属性：存储在 Shape::material 中，这里仅为兼容旧调用点做透传 ---
 	inline float getRestitution( )const { return shape ? shape->material.restitution : 0.0f; }
 	inline void setRestitution(float e) { if (shape) shape->material.restitution = e; }
-	inline float getInvMass( )const { return invMass; }
+	inline float getInvMass( )const { return m_soa ? m_soa->invMasses[m_soaIndex] : invMass; }
 	inline float getMass( )const { return mass; }
 	inline float getInertia( )const { return inertia; }
 	//转矩累加
-	float addTorque(float t) { return torque += t; }
+	float addTorque(float t) { if (m_soa) return m_soa->torques[m_soaIndex] += t; return torque += t; }
 	//力作用于非重心位置会产生转矩，公式为：$Torque = (point - position) \times force$ (2D 叉积)。
 	void applyForceAtPoint(Vector2 force, Vector2 worldPoint);
 	void updateAABB( );
@@ -117,12 +118,12 @@ public:
 	inline int32_t getProxyId() const { return m_proxyId; }
 	inline void setProxyId(int32_t id) { m_proxyId = id; }
 	ContactEdge* getContactList() { return m_contactList; }
-	inline Vector2 getForce() const { return force; }
-	inline void setForce(Vector2 f) { force = f; }
-	inline float getGravityScale() const { return gravityScale; }
-	inline void setGravityScale(float g) { gravityScale = g; }
-	inline float getTorque() { return torque; }
-	inline void setTorque(float t) { torque = t; }
+	inline Vector2 getForce() const { return m_soa ? m_soa->forces[m_soaIndex] : force; }
+	inline void setForce(Vector2 f) { if (m_soa) m_soa->forces[m_soaIndex] = f; else force = f; }
+	inline float getGravityScale() const { return m_soa ? m_soa->gravityScales[m_soaIndex] : gravityScale; }
+	inline void setGravityScale(float g) { if (m_soa) m_soa->gravityScales[m_soaIndex] = g; else gravityScale = g; }
+	inline float getTorque() { return m_soa ? m_soa->torques[m_soaIndex] : torque; }
+	inline void setTorque(float t) { if (m_soa) m_soa->torques[m_soaIndex] = t; else torque = t; }
 	void setAwake(bool w);
 	inline bool isAwake() const { return m_isAwake; }
 	inline bool isSleepAllowed() const { return m_isSleepAllowed; }
@@ -134,7 +135,13 @@ public:
 	AABB getSweptAABB(float dt)const;
 	// CCD 轨迹 AABB：联合本帧起始 (P0) 与当前 (P1) 位姿的包围盒（TOI 插值区间）
 	AABB getTrajectoryAABB() const;
-	void setBullet(bool flag) { m_isBullet = flag; }
+	void setBullet(bool flag) {
+		m_isBullet = flag;
+		if (m_soa) {
+			if (flag) m_soa->flags[m_soaIndex] |= BodySoA::FLAG_BULLET;
+			else      m_soa->flags[m_soaIndex] &= ~BodySoA::FLAG_BULLET;
+		}
+	}
 	bool isBullet() const { return m_isBullet; }
 	Transform getTransform(float alpha, float dt=Settings::DT);
 	void setTransform(const Vector2& position, float angle);
@@ -148,9 +155,36 @@ public:
 
 	inline const std::vector<Joint*>& getJointList() const {return m_joints;}
 
+	// --- SoA 槽位句柄（V5 Day 2）：-1 = 尚未挂载，挂载后所有热数据访问器穿透到 BodySoA ---
+	inline int getSoaIndex() const { return m_soaIndex; }
+
 private:
 	friend struct ContactEdge;
 	friend class World;
+	friend class BodySoA;
+
+	// 热数据槽位引用助手：挂载后读写 SoA 平行数组，挂载前退回本地成员（构造期）
+	inline Vector2& slotPos() { return m_soa ? m_soa->positions[m_soaIndex] : position; }
+	inline Vector2& slotVel() { return m_soa ? m_soa->velocities[m_soaIndex] : velocity; }
+	inline Vector2& slotForce() { return m_soa ? m_soa->forces[m_soaIndex] : force; }
+	inline float& slotRot() { return m_soa ? m_soa->rotations[m_soaIndex] : rotation; }
+	inline float& slotAngVel() { return m_soa ? m_soa->angularVels[m_soaIndex] : angularVelocity; }
+	inline float& slotTorque() { return m_soa ? m_soa->torques[m_soaIndex] : torque; }
+	inline float& slotInvMass() { return m_soa ? m_soa->invMasses[m_soaIndex] : invMass; }
+	inline float& slotInvInertia() { return m_soa ? m_soa->invInertias[m_soaIndex] : invInertia; }
+	inline float& slotGravityScale() { return m_soa ? m_soa->gravityScales[m_soaIndex] : gravityScale; }
+	// 同步清醒标记到 SoA 位标记（setAwake/forceSleep 内部调用）
+	inline void syncAwakeFlag() {
+		if (!m_soa) return;
+		if (m_isAwake) m_soa->flags[m_soaIndex] |= BodySoA::FLAG_AWAKE;
+		else           m_soa->flags[m_soaIndex] &= ~BodySoA::FLAG_AWAKE;
+	}
+	// 同步质量属性到 SoA（setShape/setType/updateMassData 内部调用）
+	inline void syncMassToSoA() {
+		if (!m_soa) return;
+		m_soa->invMasses[m_soaIndex] = invMass;
+		m_soa->invInertias[m_soaIndex] = invInertia;
+	}
 
 	Vector2 position;		//当前位置
 	Vector2 velocity;		//当前速度
@@ -186,4 +220,8 @@ private:
 	float m_prevRotation;
 
 	std::vector<Joint*> m_joints; // 存储与当前 Body 相连的所有关节
+
+	// --- SoA 挂载句柄（V5 Day 2）---
+	BodySoA* m_soa = nullptr;   // 所属 SoA 容器（nullptr = 未挂载，访问器走本地成员）
+	int m_soaIndex = -1;        // 本刚体在 SoA 平行数组中的槽位索引（-1 = 未挂载）
 };

@@ -2,20 +2,20 @@
 
 Vector2 Body::addForce(Vector2 f)
 {
-    this->force += f;
+    slotForce() += f;
     setAwake(true); // 被推了一把，必须醒来
-    return this->force;
+    return getForce();
 }
 
 void Body::setPosition(float x, float y)
 {
-    position = Vector2(x, y);updateAABB();
+    slotPos() = Vector2(x, y); updateAABB();
     setAwake(true); // 被推了一把，必须醒来
 }
 
 void Body::setPosition(const Vector2& v)
 {
-    position = v;
+    slotPos() = v;
     setAwake(true); // 被推了一把，必须醒来
     updateAABB();
 
@@ -23,19 +23,19 @@ void Body::setPosition(const Vector2& v)
 
 void Body::setPositionQuiet(const Vector2& v)
 {
-    position = v;
+    slotPos() = v;
     updateAABB();
 }
 
 void Body::setRotationQuiet(float r)
 {
-    rotation = r;
+    slotRot() = r;
     updateAABB();
 }
 
 void Body::setRotation(float r)
 {
-    rotation = r;
+    slotRot() = r;
     setAwake(true); // 被推了一把，必须醒来
     updateAABB();
 }
@@ -54,13 +54,14 @@ void Body::setShape(Shape* s, float density)
         this->invInertia = 1.0f / (this->inertia);
     else
         this->invInertia = 0.0f;
+    syncMassToSoA();
 }
 
 void Body::applyForceAtPoint(Vector2 force, Vector2 worldPoint)
 {
     addForce(force);
     //施加力之后肯定会跑偏
-    Vector2 r = worldPoint - this->position;
+    Vector2 r = worldPoint - getPosition();
 
     // 在 2D 中，叉乘公式：x1*y2 - y1*x2
     float t = r.getX() * force.getY() - r.getY() * force.getX();
@@ -71,23 +72,23 @@ void Body::applyForceAtPoint(Vector2 force, Vector2 worldPoint)
 void Body::updateAABB()
 {
     if (shape)
-        worldAABB = shape->computeAABB(position, rotation);
+        worldAABB = shape->computeAABB(getPosition(), getRotation());
 }
 
 void Body::applyImpulse(Vector2 impulse)
 {
-    if (invMass == 0.0f) return;
-    velocity += impulse * invMass;
+    if (getInvMass() == 0.0f) return;
+    slotVel() += impulse * getInvMass();
 }
 
 void Body::applyImpulse(const Vector2& impulse, const Vector2& contactVector) {
-    if (invMass == 0.0f) return;
-    velocity += impulse * invMass;
-    angularVelocity += invInertia * Vector2::cross(contactVector, impulse);
+    if (getInvMass() == 0.0f) return;
+    slotVel() += impulse * getInvMass();
+    slotAngVel() += getInvInertia() * Vector2::cross(contactVector, impulse);
 }
 
 void Body::setAwake(bool w) {
-    if (invMass == 0.0f) return;
+    if (getInvMass() == 0.0f) return;
     if (w) {
         m_isAwake = true;
         m_sleepTimer = 0.0f; // 只要醒了，重新开始计算“疲劳值”
@@ -97,6 +98,7 @@ void Body::setAwake(bool w) {
         m_sleepTimer = 0.0f;
         // 入睡时，理论上速度应该已经被归零（在 Island::solve 里处理了）
     }
+    syncAwakeFlag();
 }
 
 void Body::setType(BodyType type, float density) {
@@ -110,8 +112,8 @@ void Body::setType(BodyType type, float density) {
         // 静态物体必须强制进入非清醒状态，且不参与睡眠计时
         this->m_isAwake = false;
         this->m_sleepTimer = 0.0f;
-        this->velocity.clear();
-        this->angularVelocity = 0.0f;
+        slotVel().clear();
+        slotAngVel() = 0.0f;
     }
     else {
         // --- 切换到动态 ---
@@ -127,24 +129,27 @@ void Body::setType(BodyType type, float density) {
         setAwake(true);
     }
 
+    syncMassToSoA();
+    syncAwakeFlag();
     updateAABB();
 }
 
 void Body::forceSleep() {
     // 1. 静态物体不需要强制睡眠，因为它本身就不醒
-    if (invMass == 0.0f) return;
+    if (getInvMass() == 0.0f) return;
 
     // 2. 状态强转
     m_isAwake = false;
 
     // 3. 必须清空所有中间状态
     m_sleepTimer = 0.0f;
-    force.clear();
-    torque = 0.0f;
+    slotForce().clear();
+    slotTorque() = 0.0f;
 
     // 4. 必须物理性停稳
-    velocity.clear();
-    angularVelocity = 0.0f;
+    slotVel().clear();
+    slotAngVel() = 0.0f;
+    syncAwakeFlag();
 }
 
 AABB Body::getSweptAABB(float dt) const
@@ -174,15 +179,15 @@ Transform Body::getTransform(float alpha, float dt)
     Transform tf;
     // alpha = 0 对应 m_prevPosition (本帧开始)
     // alpha = 1 对应 m_position (本帧结束)
-    tf.p = m_prevPosition + (position - m_prevPosition) * alpha;
-    tf.q = m_prevRotation + (rotation - m_prevRotation) * alpha;
+    tf.p = m_prevPosition + (getPosition() - m_prevPosition) * alpha;
+    tf.q = m_prevRotation + (getRotation() - m_prevRotation) * alpha;
     return tf;
 }
 
 void Body::savePrevState()
 {
-    m_prevPosition = position;
-    m_prevRotation = rotation;
+    m_prevPosition = getPosition();
+    m_prevRotation = getRotation();
 }
 
 void Body::removeJoint(Joint* joint)
@@ -195,8 +200,8 @@ void Body::removeJoint(Joint* joint)
 
 void Body::setTransform(const Vector2& position, float angle) {
     // 1. 更新底层位姿数据
-    this->position = position;
-    this->rotation = angle;
+    slotPos() = position;
+    slotRot() = angle;
 
     // 2. 【核心】立即刷新该物体的 AABB
     // 物理引擎的碰撞检测依赖 AABB，如果坐标变了 AABB 不变，
@@ -217,6 +222,7 @@ void Body::updateMassData()
         invMass = 0.0f;
         inertia = 0.0f;
         invInertia = 0.0f;
+        syncMassToSoA();
         return;
     }
 
@@ -225,4 +231,5 @@ void Body::updateMassData()
     invMass = (mass > 0.0f) ? 1.0f / mass : 0.0f;
     inertia = data.inertia;
     invInertia = (inertia > 0.0f) ? 1.0f / inertia : 0.0f;
+    syncMassToSoA();
 }

@@ -2,6 +2,7 @@
 #include <vector>
 #include "Body.h"
 #include "../Common/Vector2.h"
+#include "../Common/SoABody.h"
 #include "../Common/Setting.h"
 #include "../Collision/Manifold.h"
 #include "../Collision/BroadPhase.h"
@@ -34,8 +35,13 @@ public:
 		m_bodies.push_back(body);
 		int32_t proxyId = m_broadPhase.createProxy(body->getAABB(), body);
 		body->setProxyId(proxyId);
+		// [V5 Day 2] 挂载 SoA 槽位：热数据进入平铺平行数组，访问器自此无缝穿透
+		m_soa.AllocateSlot(body);
 	}
 	const std::vector<Body*>& getBodies( )const { return m_bodies; }
+	// [V5 Day 2] 刚体热数据 SoA 容器（积分流水线 + 诊断/验收用）
+	inline BodySoA& getSoA() { return m_soa; }
+	inline const BodySoA& getSoA() const { return m_soa; }
 
 	// ================= 工厂接口（推荐统一用工厂创建，避免手写 new）=================
 	/// 工厂：创建刚体并注册进世界。
@@ -103,6 +109,7 @@ private:
 	// 处理延迟销毁队列（把 destroyBody 排队的物体真正移除）
 	void flushDestroyQueue();
 	std::vector<Body*> m_bodies;
+	BodySoA m_soa;      // [V5 Day 2] 刚体热数据平铺平行数组（SoA 架构核心）
 	Vector2 m_gravity;
 	std::vector<Manifold> m_manifolds;
 	BroadPhase m_broadPhase; // 宽相管理系统
