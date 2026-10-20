@@ -45,48 +45,31 @@ void World::step(float dt) {
     {
         ScopedTimer timer(m_profiler, "1. Integration");
         // 1. 速度积分与位置预测 (P0 -> P1)
-        // [V5 Day 2] SoA 数据导向流水线：告别 Body* 指针追逐，原始指针 + 标量展开
-        // 连续推进（Debug 下也零函数调用），一条 64B 缓存行覆盖多个刚体，
-        // 并为明日 AVX2 SIMD 矢量化铺路。标量序列与旧 Vector2 运算逐位一致
-        int soaCount = m_soa.GetCount();
-        const Vector2 gravity = m_gravity;
-        Vector2* pos = m_soa.positions.data();
-        Vector2* vel = m_soa.velocities.data();
-        float* rot = m_soa.rotations.data();
-        float* angVel = m_soa.angularVels.data();
-        const float* invM = m_soa.invMasses.data();
-        const float* invI = m_soa.invInertias.data();
-        Vector2* frc = m_soa.forces.data();
-        float* trq = m_soa.torques.data();
-        const float* gs = m_soa.gravityScales.data();
-        const uint32_t* flg = m_soa.flags.data();
-        Body** owners = m_soa.bodyOwners.data();
-        const float gx = gravity.getX(), gy = gravity.getY();
-        for (int i = 0; i < soaCount; ++i) {
-            if (invM[i] == 0.0f || !(flg[i] & BodySoA::FLAG_AWAKE)) continue; // 静态/睡眠跳过
-            // accel = force * invMass + gravity * gravityScale（标量展开）
-            vel[i].x += (frc[i].x * invM[i] + gx * gs[i]) * dt;
-            vel[i].y += (frc[i].y * invM[i] + gy * gs[i]) * dt;
-            angVel[i] += trq[i] * invI[i] * dt;
-
-            Body* b = owners[i];
-            b->m_prevPosition = pos[i]; // 记录当前位置为 P0
-            b->m_prevRotation = rot[i];
-
-            pos[i].x += vel[i].x * dt; // 预测 P1
-            pos[i].y += vel[i].y * dt;
-            rot[i] += angVel[i] * dt;
-
-            frc[i].x = 0.0f; // 力/扭矩积分后清零（旧语义）
-            frc[i].y = 0.0f;
-            trq[i] = 0.0f;
-        }
+        // [V5 Day 3] AVX2 8 路并发前向欧拉积分：FMA 融合乘加 + 免分支掩码，
+        // 一条 YMM 指令同时推进 8 个刚体；CPU 不支持或显式关闭时自动降级
+        // 标量回退路径（BodySoA::IntegrateScalar，与旧版积分逐位一致）
+        m_soa.IntegrateSIMD(dt, m_gravity);
 
         // [CCD fix] éæ/ç¡ç åä½æ¬å¸§ä¸ç§¯åï¼ä½å¶ prev ç¶æå¿é¡»ä¸å½åä¸è´ââ
         // åå»ºåæ setRotation çéæåä½ prevRotation åçå¨æé å¼ 0ï¼
         // getTransform(alpha) ä¼ææè½¬æå¼æ Î±Â·Î¸ çéè¯¯å§¿æï¼æå¢ TOI æ³çº¿åéï¼
-        for (Body* b : m_bodies) {
-            if (b->getInvMass() == 0.0f || !b->isAwake()) b->savePrevState();
+        // [V5 Day 3] 原始数组平扫（免逐体访问器函数调用）：
+        // 静态/睡眠刚体不积分，其 prev 状态同步经 SoA 平铺数组直接完成
+        {
+            const int soaN2 = m_soa.GetCount();
+            const float* invMArr2 = m_soa.invMasses.data();
+            const uint32_t* flgArr2 = m_soa.flags.data();
+            const float* posXArr2 = m_soa.positionsX.data();
+            const float* posYArr2 = m_soa.positionsY.data();
+            const float* rotArr2 = m_soa.rotations.data();
+            Body** ownArr2 = m_soa.bodyOwners.data();
+            for (int i = 0; i < soaN2; ++i) {
+                if (invMArr2[i] == 0.0f || !(flgArr2[i] & BodySoA::FLAG_AWAKE)) {
+                    ownArr2[i]->m_prevPosition.x = posXArr2[i];
+                    ownArr2[i]->m_prevPosition.y = posYArr2[i];
+                    ownArr2[i]->m_prevRotation = rotArr2[i];
+                }
+            }
         }
     }
     

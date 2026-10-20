@@ -76,7 +76,7 @@ public:
 		// 初始化 AABB
 		updateAABB();
 	}
-	inline void clearForce() { if (m_soa) m_soa->forces[m_soaIndex].clear(); else force.clear(); }
+	inline void clearForce() { if (m_soa) m_soa->ClearForce(m_soaIndex); else force.clear(); }
 	Vector2 addForce(Vector2 f);
 
 	// 方便外部（如日志系统）读取数据
@@ -86,12 +86,12 @@ public:
 	void setPositionQuiet(const Vector2& v);
 	// 关节位置修正专用：静默修改角度
 	void setRotationQuiet(float r);
-	Vector2 getPosition() const { return m_soa ? m_soa->positions[m_soaIndex] : position; }
-	Vector2 getVelocity() const { return m_soa ? m_soa->velocities[m_soaIndex] : velocity; }
+	Vector2 getPosition() const { return m_soa ? m_soa->GetPosition(m_soaIndex) : position; }
+	Vector2 getVelocity() const { return m_soa ? m_soa->GetVelocity(m_soaIndex) : velocity; }
 	Shape* getShape()const { return shape; };
 	float getRotation()const { return m_soa ? m_soa->rotations[m_soaIndex] : rotation; }
 	void setRotation(float r);
-	void setVelocity(Vector2 v) { if (m_soa) m_soa->velocities[m_soaIndex] = v; else velocity = v; }
+	void setVelocity(Vector2 v) { if (m_soa) m_soa->SetVelocity(m_soaIndex, v); else velocity = v; }
 	AABB getAABB( )const { return worldAABB; }
 	float getAngularVelocity( )const { return m_soa ? m_soa->angularVels[m_soaIndex] : angularVelocity; }
 	void setAngularVelocity(float av) { if (m_soa) m_soa->angularVels[m_soaIndex] = av; else angularVelocity = av; }
@@ -118,8 +118,8 @@ public:
 	inline int32_t getProxyId() const { return m_proxyId; }
 	inline void setProxyId(int32_t id) { m_proxyId = id; }
 	ContactEdge* getContactList() { return m_contactList; }
-	inline Vector2 getForce() const { return m_soa ? m_soa->forces[m_soaIndex] : force; }
-	inline void setForce(Vector2 f) { if (m_soa) m_soa->forces[m_soaIndex] = f; else force = f; }
+	inline Vector2 getForce() const { return m_soa ? m_soa->GetForce(m_soaIndex) : force; }
+	inline void setForce(Vector2 f) { if (m_soa) m_soa->SetForce(m_soaIndex, f); else force = f; }
 	inline float getGravityScale() const { return m_soa ? m_soa->gravityScales[m_soaIndex] : gravityScale; }
 	inline void setGravityScale(float g) { if (m_soa) m_soa->gravityScales[m_soaIndex] = g; else gravityScale = g; }
 	inline float getTorque() { return m_soa ? m_soa->torques[m_soaIndex] : torque; }
@@ -163,16 +163,29 @@ private:
 	friend class World;
 	friend class BodySoA;
 
-	// 热数据槽位引用助手：挂载后读写 SoA 平行数组，挂载前退回本地成员（构造期）
-	inline Vector2& slotPos() { return m_soa ? m_soa->positions[m_soaIndex] : position; }
-	inline Vector2& slotVel() { return m_soa ? m_soa->velocities[m_soaIndex] : velocity; }
-	inline Vector2& slotForce() { return m_soa ? m_soa->forces[m_soaIndex] : force; }
-	inline float& slotRot() { return m_soa ? m_soa->rotations[m_soaIndex] : rotation; }
-	inline float& slotAngVel() { return m_soa ? m_soa->angularVels[m_soaIndex] : angularVelocity; }
-	inline float& slotTorque() { return m_soa ? m_soa->torques[m_soaIndex] : torque; }
-	inline float& slotInvMass() { return m_soa ? m_soa->invMasses[m_soaIndex] : invMass; }
-	inline float& slotInvInertia() { return m_soa ? m_soa->invInertias[m_soaIndex] : invInertia; }
-	inline float& slotGravityScale() { return m_soa ? m_soa->gravityScales[m_soaIndex] : gravityScale; }
+	// 热数据槽位助手：挂载后读写 SoA 平铺数组，挂载前退回本地成员（构造期）
+	inline Vector2 slotPosV() const { return m_soa ? m_soa->GetPosition(m_soaIndex) : position; }
+	inline void setSlotPosV(const Vector2& v) { if (m_soa) m_soa->SetPosition(m_soaIndex, v); else position = v; }
+	inline Vector2 slotVelV() const { return m_soa ? m_soa->GetVelocity(m_soaIndex) : velocity; }
+	inline void setSlotVelV(const Vector2& v) { if (m_soa) m_soa->SetVelocity(m_soaIndex, v); else velocity = v; }
+	inline void addSlotVelV(const Vector2& dv) { if (m_soa) m_soa->AddVelocity(m_soaIndex, dv); else velocity += dv; }
+	inline Vector2 slotForceV() const { return m_soa ? m_soa->GetForce(m_soaIndex) : force; }
+	inline void addSlotForceV(const Vector2& f) { if (m_soa) m_soa->AddForce(m_soaIndex, f); else force += f; }
+	inline void clearSlotForceV() { if (m_soa) m_soa->ClearForce(m_soaIndex); else force.clear(); }
+	inline float slotRotV() const { return m_soa ? m_soa->GetRotation(m_soaIndex) : rotation; }
+	inline void setSlotRotV(float r) { if (m_soa) m_soa->SetRotation(m_soaIndex, r); else rotation = r; }
+	inline float slotAngVelV() const { return m_soa ? m_soa->GetAngularVel(m_soaIndex) : angularVelocity; }
+	inline void setSlotAngVelV(float w) { if (m_soa) m_soa->SetAngularVel(m_soaIndex, w); else angularVelocity = w; }
+	inline void addSlotAngVelV(float dw) { if (m_soa) m_soa->AddAngularVel(m_soaIndex, dw); else angularVelocity += dw; }
+	inline float slotTorqueV() const { return m_soa ? m_soa->GetTorque(m_soaIndex) : torque; }
+	inline void setSlotTorqueV(float t) { if (m_soa) m_soa->SetTorque(m_soaIndex, t); else torque = t; }
+	inline void addSlotTorqueV(float t) { if (m_soa) m_soa->AddTorque(m_soaIndex, t); else torque += t; }
+	inline float slotInvMassV() const { return m_soa ? m_soa->GetInvMass(m_soaIndex) : invMass; }
+	inline void setSlotInvMassV(float m) { if (m_soa) m_soa->SetInvMass(m_soaIndex, m); else invMass = m; }
+	inline float slotInvInertiaV() const { return m_soa ? m_soa->GetInvInertia(m_soaIndex) : invInertia; }
+	inline void setSlotInvInertiaV(float inv) { if (m_soa) m_soa->SetInvInertia(m_soaIndex, inv); else invInertia = inv; }
+	inline float slotGravityScaleV() const { return m_soa ? m_soa->GetGravityScale(m_soaIndex) : gravityScale; }
+	inline void setSlotGravityScaleV(float g) { if (m_soa) m_soa->SetGravityScale(m_soaIndex, g); else gravityScale = g; }
 	// 同步清醒标记到 SoA 位标记（setAwake/forceSleep 内部调用）
 	inline void syncAwakeFlag() {
 		if (!m_soa) return;
@@ -182,8 +195,8 @@ private:
 	// 同步质量属性到 SoA（setShape/setType/updateMassData 内部调用）
 	inline void syncMassToSoA() {
 		if (!m_soa) return;
-		m_soa->invMasses[m_soaIndex] = invMass;
-		m_soa->invInertias[m_soaIndex] = invInertia;
+		m_soa->SetInvMass(m_soaIndex, invMass);
+		m_soa->SetInvInertia(m_soaIndex, invInertia);
 	}
 
 	Vector2 position;		//当前位置

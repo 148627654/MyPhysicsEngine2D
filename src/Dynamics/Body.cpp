@@ -2,20 +2,20 @@
 
 Vector2 Body::addForce(Vector2 f)
 {
-    slotForce() += f;
+    addSlotForceV(f);
     setAwake(true); // 被推了一把，必须醒来
     return getForce();
 }
 
 void Body::setPosition(float x, float y)
 {
-    slotPos() = Vector2(x, y); updateAABB();
+    setSlotPosV(Vector2(x, y)); updateAABB();
     setAwake(true); // 被推了一把，必须醒来
 }
 
 void Body::setPosition(const Vector2& v)
 {
-    slotPos() = v;
+    setSlotPosV(v);
     setAwake(true); // 被推了一把，必须醒来
     updateAABB();
 
@@ -23,19 +23,19 @@ void Body::setPosition(const Vector2& v)
 
 void Body::setPositionQuiet(const Vector2& v)
 {
-    slotPos() = v;
+    setSlotPosV(v);
     updateAABB();
 }
 
 void Body::setRotationQuiet(float r)
 {
-    slotRot() = r;
+    setSlotRotV(r);
     updateAABB();
 }
 
 void Body::setRotation(float r)
 {
-    slotRot() = r;
+    setSlotRotV(r);
     setAwake(true); // 被推了一把，必须醒来
     updateAABB();
 }
@@ -78,13 +78,13 @@ void Body::updateAABB()
 void Body::applyImpulse(Vector2 impulse)
 {
     if (getInvMass() == 0.0f) return;
-    slotVel() += impulse * getInvMass();
+    addSlotVelV(impulse * getInvMass());
 }
 
 void Body::applyImpulse(const Vector2& impulse, const Vector2& contactVector) {
     if (getInvMass() == 0.0f) return;
-    slotVel() += impulse * getInvMass();
-    slotAngVel() += getInvInertia() * Vector2::cross(contactVector, impulse);
+    addSlotVelV(impulse * getInvMass());
+    addSlotAngVelV(getInvInertia() * Vector2::cross(contactVector, impulse));
 }
 
 void Body::setAwake(bool w) {
@@ -112,8 +112,8 @@ void Body::setType(BodyType type, float density) {
         // 静态物体必须强制进入非清醒状态，且不参与睡眠计时
         this->m_isAwake = false;
         this->m_sleepTimer = 0.0f;
-        slotVel().clear();
-        slotAngVel() = 0.0f;
+        setSlotVelV(Vector2(0.0f, 0.0f));
+        setSlotAngVelV(0.0f);
     }
     else {
         // --- 切换到动态 ---
@@ -143,12 +143,12 @@ void Body::forceSleep() {
 
     // 3. 必须清空所有中间状态
     m_sleepTimer = 0.0f;
-    slotForce().clear();
-    slotTorque() = 0.0f;
+    clearSlotForceV();
+    setSlotTorqueV(0.0f);
 
     // 4. 必须物理性停稳
-    slotVel().clear();
-    slotAngVel() = 0.0f;
+    setSlotVelV(Vector2(0.0f, 0.0f));
+    setSlotAngVelV(0.0f);
     syncAwakeFlag();
 }
 
@@ -200,8 +200,8 @@ void Body::removeJoint(Joint* joint)
 
 void Body::setTransform(const Vector2& position, float angle) {
     // 1. 更新底层位姿数据
-    slotPos() = position;
-    slotRot() = angle;
+    setSlotPosV(position);
+    setSlotRotV(angle);
 
     // 2. 【核心】立即刷新该物体的 AABB
     // 物理引擎的碰撞检测依赖 AABB，如果坐标变了 AABB 不变，

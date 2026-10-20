@@ -3,13 +3,16 @@
 
 void BodySoA::MoveSlot(int from, int to)
 {
-    positions[to] = positions[from];
-    velocities[to] = velocities[from];
+    positionsX[to] = positionsX[from];
+    positionsY[to] = positionsY[from];
+    velocitiesX[to] = velocitiesX[from];
+    velocitiesY[to] = velocitiesY[from];
     rotations[to] = rotations[from];
     angularVels[to] = angularVels[from];
     invMasses[to] = invMasses[from];
     invInertias[to] = invInertias[from];
-    forces[to] = forces[from];
+    forcesX[to] = forcesX[from];
+    forcesY[to] = forcesY[from];
     torques[to] = torques[from];
     gravityScales[to] = gravityScales[from];
     flags[to] = flags[from];
@@ -22,16 +25,35 @@ void BodySoA::MoveSlot(int from, int to)
 
 int BodySoA::AllocateSlot(Body* body)
 {
+    // 0. 容量 8 对齐填充：SIMD 8 路批处理永远有安全余量，矢量加载绝不越界缺页
+    EnsureCapacity(positionsX);
+    EnsureCapacity(positionsY);
+    EnsureCapacity(velocitiesX);
+    EnsureCapacity(velocitiesY);
+    EnsureCapacity(rotations);
+    EnsureCapacity(angularVels);
+    EnsureCapacity(invMasses);
+    EnsureCapacity(invInertias);
+    EnsureCapacity(forcesX);
+    EnsureCapacity(forcesY);
+    EnsureCapacity(torques);
+    EnsureCapacity(gravityScales);
+    EnsureCapacity(flags);
+    EnsureCapacity(bodyOwners);
+
     int index = (int)bodyOwners.size();
 
     // 1. 追加全部平行数组，写入刚体热数据快照（Body 是友元，可直读私有成员）
-    positions.push_back(body->position);
-    velocities.push_back(body->velocity);
+    positionsX.push_back(body->position.getX());
+    positionsY.push_back(body->position.getY());
+    velocitiesX.push_back(body->velocity.getX());
+    velocitiesY.push_back(body->velocity.getY());
     rotations.push_back(body->rotation);
     angularVels.push_back(body->angularVelocity);
     invMasses.push_back(body->invMass);
     invInertias.push_back(body->invInertia);
-    forces.push_back(body->force);
+    forcesX.push_back(body->force.getX());
+    forcesY.push_back(body->force.getY());
     torques.push_back(body->torque);
     gravityScales.push_back(body->gravityScale);
     flags.push_back((body->m_isAwake ? FLAG_AWAKE : 0u) |
@@ -58,13 +80,16 @@ void BodySoA::FreeSlot(int index)
     }
 
     // 2. 截断全部平行数组尾部
-    positions.pop_back();
-    velocities.pop_back();
+    positionsX.pop_back();
+    positionsY.pop_back();
+    velocitiesX.pop_back();
+    velocitiesY.pop_back();
     rotations.pop_back();
     angularVels.pop_back();
     invMasses.pop_back();
     invInertias.pop_back();
-    forces.pop_back();
+    forcesX.pop_back();
+    forcesY.pop_back();
     torques.pop_back();
     gravityScales.pop_back();
     flags.pop_back();

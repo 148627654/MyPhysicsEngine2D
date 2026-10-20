@@ -40,6 +40,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>D:\Cpp\MyPhysicsEngine2D\include\physics\Utils;D:\Cpp\MyPhysicsEngine2D\include\physics\Dynamics;D:\Cpp\MyPhysicsEngine2D\include\physics\Collision;D:\Cpp\MyPhysicsEngine2D\include\physics\Common;D:\Cpp\MyPhysicsEngine2D\include\physics\Events;D:\Cpp\MyPhysicsEngine2D\docs;D:\Cpp\MyPhysicsEngine2D\googleTest\gtest\include;D:\Cpp\MyPhysicsEngine2D\googleTest\gtest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -63,6 +64,7 @@
     <ClCompile Include="src\Collision\TimeOfImpact.cpp" />
     <ClCompile Include="src\Common\BlockAllocator.cpp" />
     <ClCompile Include="src\Common\SoABody.cpp" />
+    <ClCompile Include="src\Common\SIMDIntegrator.cpp" />
     <ClCompile Include="src\Common\Vector2.cpp" />
     <ClCompile Include="src\Dynamics\Body.cpp" />
     <ClCompile Include="src\Dynamics\DistanceJoint.cpp" />
@@ -113,6 +115,7 @@
     <ClCompile Include="googleTest\V4_014.cpp" />
     <ClCompile Include="googleTest\V5_001.cpp" />
     <ClCompile Include="googleTest\V5_002.cpp" />
+    <ClCompile Include="googleTest\V5_003.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

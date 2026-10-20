@@ -2,9 +2,12 @@
 // 场景 1 SoA 增删置换与索引映射：10 刚体槽位 0~9 → 删除槽位 3 →
 //   末尾刚体 Swap-and-Pop 精准搬家到槽位 3，句柄自动同步，数据无一错位
 // 场景 2 数据双向一致性：setPosition/setVelocity 等 API 无缝穿透读写 SoA 槽位；
-//   1 步积分后 getPosition() 与 SoA 运算值逐位一致（外部业务代码 0 感知）
-// 场景 3 5000 刚体积分性能对照：SoA 平铺流水线 vs 旧版 AoS 指针遍历——
-//   数值结果逐位严格相等（误差为 0），积分耗时下降 35% 以上（< 1.3ms/帧）
+//   1 步积分后 getPosition() 与 SoA 运算值一致（外部业务代码 0 感知）
+// 场景 3 5000 刚体积分性能对照：SoA 流水线 vs 旧版 AoS 指针遍历——
+//   数值结果一致（Day 3 起引擎走 AVX2 FMA 内核，舍入差异 ~ulp 级按容差验收），
+//   积分耗时下降 35% 以上（< 1.3ms/帧）
+// 注：Day 3 后 SoA 数组升级为拆分单精度流（positionsX/Y 等），本文件
+//   的槽位断言统一走 BodySoA 的 Get/Set 便捷接口
 #include <gtest/gtest.h>
 #include "World.h"
 #include "Body.h"
@@ -12,9 +15,10 @@
 #include "Circle.h"
 #include "Setting.h"
 #include <chrono>
+#include <cmath>
 #include <vector>
 
-// 逐位相等断言助手（float 用 == 而非近似——本测试要求浮点序列严格一致）
+// 逐位相等断言助手（存储型写穿断言用：无算术运算的存取必须逐位）
 static bool vecEq(const Vector2& a, const Vector2& b)
 {
     return a.getX() == b.getX() && a.getY() == b.getY();
@@ -38,7 +42,7 @@ TEST(V5_002, SoAAllocationAndSwapTest) {
 
     // 给槽位 9 的刚体打上独特标记，作为 Swap-and-Pop 的数据完整性探针
     bodies[9]->setPosition(Vector2(99.0f, 88.0f));
-    EXPECT_TRUE(vecEq(world.getSoA().positions[9], Vector2(99.0f, 88.0f)));
+    EXPECT_TRUE(vecEq(world.getSoA().GetPosition(9), Vector2(99.0f, 88.0f)));
 
     // 删除索引为 3 的刚体（延迟销毁，step 开头真正移除）
     Body* body3 = bodies[3];
@@ -52,11 +56,11 @@ TEST(V5_002, SoAAllocationAndSwapTest) {
     EXPECT_EQ(world.getSoA().GetOwner(3), bodies[9]);
     EXPECT_EQ(bodies[9]->getSoaIndex(), 3);
 
-    // 数据无一错位：槽位 3 承载的是原槽位 9 的完整数据
-    EXPECT_TRUE(vecEq(world.getSoA().positions[3], Vector2(99.0f, 88.0f)));
-    EXPECT_TRUE(vecEq(world.getSoA().velocities[3], Vector2(0.0f, 0.0f)));
-    EXPECT_EQ(world.getSoA().rotations[3], bodies[9]->getRotation());
-    EXPECT_EQ(world.getSoA().invMasses[3], bodies[9]->getInvMass());
+    // 数据无一错位：槽位 3 承载的是原槽位 9 的完整数据（静态刚体全程不积分，可逐位核对）
+    EXPECT_TRUE(vecEq(world.getSoA().GetPosition(3), Vector2(99.0f, 88.0f)));
+    EXPECT_TRUE(vecEq(world.getSoA().GetVelocity(3), Vector2(0.0f, 0.0f)));
+    EXPECT_EQ(world.getSoA().GetRotation(3), bodies[9]->getRotation());
+    EXPECT_EQ(world.getSoA().GetInvMass(3), bodies[9]->getInvMass());
 
     // 其余槽位原地不动
     for (int i = 0; i < 3; ++i)  EXPECT_EQ(world.getSoA().GetOwner(i), bodies[i]);
@@ -73,44 +77,50 @@ TEST(V5_002, BidirectionalSyncTest) {
     BodySoA& soa = world.getSoA();
 
     // 挂载同步：构造参数已镜像进 SoA 槽位
-    EXPECT_TRUE(vecEq(soa.positions[idx], Vector2(0.0f, 5.0f)));
-    EXPECT_TRUE(vecEq(soa.velocities[idx], Vector2(0.0f, 0.0f)));
-    EXPECT_EQ(soa.invMasses[idx], ball->getInvMass());
-    EXPECT_EQ(soa.invInertias[idx], ball->getInvInertia());
-    EXPECT_EQ(soa.gravityScales[idx], 1.0f);
+    EXPECT_TRUE(vecEq(soa.GetPosition(idx), Vector2(0.0f, 5.0f)));
+    EXPECT_TRUE(vecEq(soa.GetVelocity(idx), Vector2(0.0f, 0.0f)));
+    EXPECT_EQ(soa.GetInvMass(idx), ball->getInvMass());
+    EXPECT_EQ(soa.GetInvInertia(idx), ball->getInvInertia());
+    EXPECT_EQ(soa.GetGravityScale(idx), 1.0f);
 
-    // 写入穿透：API 修改立刻反映到 SoA 槽位
+    // 写入穿透：API 修改立刻反映到 SoA 槽位（纯存储，逐位断言）
     ball->setPosition(Vector2(10.0f, 20.0f));
-    EXPECT_TRUE(vecEq(soa.positions[idx], Vector2(10.0f, 20.0f)));
+    EXPECT_TRUE(vecEq(soa.GetPosition(idx), Vector2(10.0f, 20.0f)));
     ball->setVelocity(Vector2(1.0f, 2.0f));
-    EXPECT_TRUE(vecEq(soa.velocities[idx], Vector2(1.0f, 2.0f)));
+    EXPECT_TRUE(vecEq(soa.GetVelocity(idx), Vector2(1.0f, 2.0f)));
     ball->setGravityScale(2.0f);
-    EXPECT_EQ(soa.gravityScales[idx], 2.0f);
+    EXPECT_EQ(soa.GetGravityScale(idx), 2.0f);
     ball->setAngularVelocity(0.5f);
-    EXPECT_EQ(soa.angularVels[idx], 0.5f);
+    EXPECT_EQ(soa.GetAngularVel(idx), 0.5f);
     ball->addTorque(3.0f);
-    EXPECT_EQ(soa.torques[idx], 3.0f);
+    EXPECT_EQ(soa.GetTorque(idx), 3.0f);
 
-    // 手工按 SoA 公式计算 1 步积分期望值（与引擎流水线同浮点序列）
+    // 手工按标量公式计算 1 步积分期望值
     const float dt = 1.0f / 60.0f;
-    Vector2 expectV = soa.velocities[idx] +
-        (soa.forces[idx] * soa.invMasses[idx] + Vector2(0.0f, -9.8f) * soa.gravityScales[idx]) * dt;
-    Vector2 expectP = soa.positions[idx] + expectV * dt;
-    float expectR = soa.rotations[idx] + (soa.angularVels[idx] + soa.torques[idx] * soa.invInertias[idx] * dt) * dt;
+    Vector2 expectV = soa.GetVelocity(idx) +
+        (soa.GetForce(idx) * soa.GetInvMass(idx) + Vector2(0.0f, -9.8f) * soa.GetGravityScale(idx)) * dt;
+    Vector2 expectP = soa.GetPosition(idx) + expectV * dt;
+    float expectR = soa.GetRotation(idx) + (soa.GetAngularVel(idx) + soa.GetTorque(idx) * soa.GetInvInertia(idx) * dt) * dt;
 
     // 模拟 1 步积分推进
     world.step(dt);
 
-    // 读取穿透：getPosition() 与 SoA 数组、与手工期望完全一致（逐位）
-    EXPECT_TRUE(vecEq(ball->getPosition(), soa.positions[idx]));
-    EXPECT_TRUE(vecEq(ball->getPosition(), expectP));
-    EXPECT_TRUE(vecEq(ball->getVelocity(), expectV));
-    EXPECT_TRUE(vecEq(ball->getVelocity(), soa.velocities[idx]));
-    EXPECT_EQ(ball->getRotation(), expectR);
-    EXPECT_EQ(ball->getRotation(), soa.rotations[idx]);
-    // 积分后力/扭矩按旧语义清零
-    EXPECT_TRUE(vecEq(soa.forces[idx], Vector2(0.0f, 0.0f)));
-    EXPECT_EQ(soa.torques[idx], 0.0f);
+    // 读取穿透：getPosition() 与 SoA 数组、与手工期望一致。
+    // Day 3 起引擎积分走 AVX2 FMA 内核，与标量手工期望存在 ~ulp 级舍入
+    // 差异（浮点语义等价而非逐位相等），按 1e-5/1e-6 容差验收
+    EXPECT_NEAR(ball->getPosition().getX(), soa.GetPosition(idx).getX(), 1e-5f);
+    EXPECT_NEAR(ball->getPosition().getY(), soa.GetPosition(idx).getY(), 1e-5f);
+    EXPECT_NEAR(ball->getPosition().getX(), expectP.getX(), 1e-5f);
+    EXPECT_NEAR(ball->getPosition().getY(), expectP.getY(), 1e-5f);
+    EXPECT_NEAR(ball->getVelocity().getX(), expectV.getX(), 1e-6f);
+    EXPECT_NEAR(ball->getVelocity().getY(), expectV.getY(), 1e-6f);
+    EXPECT_NEAR(ball->getVelocity().getX(), soa.GetVelocity(idx).getX(), 1e-6f);
+    EXPECT_NEAR(ball->getVelocity().getY(), soa.GetVelocity(idx).getY(), 1e-6f);
+    EXPECT_NEAR(ball->getRotation(), expectR, 1e-6f);
+    EXPECT_NEAR(ball->getRotation(), soa.GetRotation(idx), 1e-6f);
+    // 积分后力/扭矩按旧语义清零（纯存储，逐位断言）
+    EXPECT_TRUE(vecEq(soa.GetForce(idx), Vector2(0.0f, 0.0f)));
+    EXPECT_EQ(soa.GetTorque(idx), 0.0f);
 }
 
 // --- 场景 3: 5000 刚体积分性能对照大考 (SoAVsAoSBenchmark) ---
@@ -120,7 +130,7 @@ TEST(V5_002, SoAVsAoSBenchmark) {
     const float dt = 1.0f / 60.0f;
     const Vector2 gravity(0.0f, -9.8f);
 
-    // ---------- 新版：World + SoA 平铺流水线 ----------
+    // ---------- 新版：World + SoA（Day 3 起为 AVX2 FMA 内核） ----------
     World world(gravity);
     std::vector<Body*> bodies(N);
     for (int i = 0; i < N; ++i) {
@@ -189,16 +199,20 @@ TEST(V5_002, SoAVsAoSBenchmark) {
         soaMs += world.getProfiler().GetRecords().at("1. Integration").accumulatedTime;
     }
 
-    // 数值一致性铁证：逐体位姿/速度/角度与旧版结果严格逐位相等（误差为 0）
-    bool exact = true;
-    for (int i = 0; i < N && exact; ++i) {
+    // 数值一致性：逐体位姿/速度/角度与旧版参考一致。
+    // Day 3 起引擎走 FMA 内核，与标量参考存在 ~ulp 级舍入差异，60 帧累计后
+    // 按量级给容差：位置 ~100 量级 → 1e-3，速度 ~10 → 1e-4，角度 ~1 → 1e-5
+    bool ok = true;
+    for (int i = 0; i < N && ok; ++i) {
         AoSBody* b = aos[i];
-        if (!vecEq(bodies[i]->getPosition(), b->position))       exact = false;
-        if (!vecEq(bodies[i]->getVelocity(), b->velocity))       exact = false;
-        if (bodies[i]->getRotation() != b->rotation)             exact = false;
-        if (bodies[i]->getAngularVelocity() != b->angularVelocity) exact = false;
+        if (std::abs(bodies[i]->getPosition().getX() - b->position.getX()) > 1e-3f ||
+            std::abs(bodies[i]->getPosition().getY() - b->position.getY()) > 1e-3f) ok = false;
+        if (std::abs(bodies[i]->getVelocity().getX() - b->velocity.getX()) > 1e-4f ||
+            std::abs(bodies[i]->getVelocity().getY() - b->velocity.getY()) > 1e-4f) ok = false;
+        if (std::abs(bodies[i]->getRotation() - b->rotation) > 1e-5f) ok = false;
+        if (std::abs(bodies[i]->getAngularVelocity() - b->angularVelocity) > 1e-4f) ok = false;
     }
-    EXPECT_TRUE(exact) << "SoA 与 AoS 积分结果必须逐位一致";
+    EXPECT_TRUE(ok) << "SoA(SIMD) 与 AoS 参考积分结果必须数值一致";
 
     double perFrameAos = aosMs / STEPS;
     double perFrameSoa = soaMs / STEPS;
