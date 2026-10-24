@@ -83,6 +83,7 @@
     <ClCompile Include="src\Dynamics\WheelJoint.cpp" />
     <ClCompile Include="src\Dynamics\MouseJoint.cpp" />
     <ClCompile Include="src\Dynamics\World.cpp" />
+    <ClCompile Include="src\Utils\BenchmarkTool.cpp" />
     <ClCompile Include="src\Utils\CSVExporter.cpp" />
     <ClCompile Include="src\Utils\Logger.cpp" />
     <ClCompile Include="src\Utils\Profiler.cpp" />
@@ -116,6 +117,7 @@
     <ClCompile Include="googleTest\V5_001.cpp" />
     <ClCompile Include="googleTest\V5_002.cpp" />
     <ClCompile Include="googleTest\V5_003.cpp" />
+    <ClCompile Include="googleTest\V5_004.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
