@@ -38,7 +38,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>D:\Cpp\MyPhysicsEngine2D\include\physics\Utils;D:\Cpp\MyPhysicsEngine2D\include\physics\Dynamics;D:\Cpp\MyPhysicsEngine2D\include\physics\Collision;D:\Cpp\MyPhysicsEngine2D\include\physics\Common;D:\Cpp\MyPhysicsEngine2D\include\physics\Events;D:\Cpp\MyPhysicsEngine2D\docs;D:\Cpp\MyPhysicsEngine2D\googleTest\gtest\include;D:\Cpp\MyPhysicsEngine2D\googleTest\gtest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Cpp\MyPhysicsEngine2D\include\physics\Utils;D:\Cpp\MyPhysicsEngine2D\include\physics\Dynamics;D:\Cpp\MyPhysicsEngine2D\include\physics\Collision;D:\Cpp\MyPhysicsEngine2D\include\physics\Common;D:\Cpp\MyPhysicsEngine2D\include\physics\Threading;D:\Cpp\MyPhysicsEngine2D\include\physics\Events;D:\Cpp\MyPhysicsEngine2D\docs;D:\Cpp\MyPhysicsEngine2D\googleTest\gtest\include;D:\Cpp\MyPhysicsEngine2D\googleTest\gtest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
@@ -83,6 +83,7 @@
     <ClCompile Include="src\Dynamics\WheelJoint.cpp" />
     <ClCompile Include="src\Dynamics\MouseJoint.cpp" />
     <ClCompile Include="src\Dynamics\World.cpp" />
+    <ClCompile Include="src\Threading\ThreadPool.cpp" />
     <ClCompile Include="src\Utils\BenchmarkTool.cpp" />
     <ClCompile Include="src\Utils\CSVExporter.cpp" />
     <ClCompile Include="src\Utils\Logger.cpp" />
@@ -118,6 +119,7 @@
     <ClCompile Include="googleTest\V5_002.cpp" />
     <ClCompile Include="googleTest\V5_003.cpp" />
     <ClCompile Include="googleTest\V5_004.cpp" />
+    <ClCompile Include="googleTest\V5_005.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
