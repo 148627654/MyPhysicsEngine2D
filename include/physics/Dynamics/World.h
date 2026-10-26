@@ -3,6 +3,7 @@
 #include "Body.h"
 #include "../Common/Vector2.h"
 #include "../Common/SoABody.h"
+#include "../Threading/ThreadPool.h"
 #include "../Common/Setting.h"
 #include "../Collision/Manifold.h"
 #include "../Collision/BroadPhase.h"
@@ -95,7 +96,12 @@ public:
 	Joint* createJoint(const JointDef& def);
 	inline int getJointCount() const { return (int)m_joints.size(); }
 	// 上一帧构建的岛屿（供测试/诊断检查 DFS 连通性）
-	inline const std::vector<Island>& getIslands() const { return m_islands; }
+	inline const std::vector<Island*>& getIslands() const { return m_islands; }
+	// [V5 Day 6] 岛屿并行求解开关（测试串行对照时关闭）
+	inline void setParallelIslandsEnabled(bool b) { m_parallelIslands = b; }
+	inline bool isParallelIslandsEnabled() const { return m_parallelIslands; }
+	// [V5 Day 6] 工作窃取线程池（懒初始化：首个多岛并行帧才启动工作线程）
+	inline Physics2D::ThreadPool* getThreadPool() const { return m_threadPool.get(); }
 private:
 	void addContactToGraph(Contact* c);
 	void removeContactFromGraph(Contact* c);
@@ -116,7 +122,11 @@ private:
 	std::map<std::pair<Body*, Body*>, Contact*> m_contactMap;
 	ContactManager m_contactManager; // 接触生命周期事件管理
 	std::vector<Body*> m_destroyQueue; // 延迟销毁队列（回调中 destroyBody 安全）
-	std::vector<Island> m_islands; // 每帧构建的岛屿集合（供测试检查连通性）
+	std::vector<Island*> m_islands; // 每帧构建的活动岛屿集合（供测试检查连通性）
+	// [V5 Day 6] 岛屿复用池（帧内零堆分配）+ 并发求解调度
+	std::vector<std::unique_ptr<Island>> m_islandPool;
+	std::unique_ptr<Physics2D::ThreadPool> m_threadPool;
+	bool m_parallelIslands = true; // 岛屿并行求解开关（测试串行对照时关闭）
 	Profiler m_profiler;
 	int m_frameTOICount = 0; // 本帧实际执行的 TOI 求解次数（CCD 零开销验收计数）
 	ContactListener* m_contactListener = nullptr; // 用户自定义的接触事件监听器

@@ -380,19 +380,29 @@ void World::buildAndSolveIslands(float dt) {
     step.velocityIterations = 10;
     step.positionIterations = 4;
 
-    int islandCount = 0; // 诊断：记录本帧生成的岛屿总数
-    m_islands.clear();   // 重建本帧岛屿集合（供测试检查 DFS 连通性）
+    // =====================================================================
+    // [V5 Day 6] 两阶段解耦流水线：
+    //   阶段一：主线程串行 DFS 图划分（只收集不解算；岛屿复用池帧内零堆分配）
+    //   阶段二：工作窃取线程池并发求解（岛屿内存地址集合严格正交，无锁零竞争；
+    //           静态刚体为纯只读共享数据，多核并发读取硬件安全）
+    // =====================================================================
+    std::vector<Island*> activeIslands;
+    activeIslands.reserve(64);
+    m_islands.clear(); // 诊断集合：本帧活动岛屿指针
 
-    // 2. 遍历所有物体寻找“种子”
+    int islandIndex = 0;
+
+    // 2. 遍历所有物体寻找"种子"
     for (Body* seed : m_bodies) {
-        //检查该岛屿是否符合休眠条件。
-        if (seed->m_islandFlag || seed->getInvMass() == 0.0f||!seed->isAwake()) continue;
+        // 检查该岛屿是否符合休眠条件。
+        if (seed->m_islandFlag || seed->getInvMass() == 0.0f || !seed->isAwake()) continue;
 
-        // --- DFS 诊断日志：发现新岛屿 ---
-        islandCount++;
-
-        m_islands.emplace_back(m_bodies.size(), m_contactMap.size());
-        Island& island = m_islands.back();
+        // 从复用池取出一个干净的 Island 对象（池满才扩容，绝不在帧内 new Island）
+        if (islandIndex >= (int)m_islandPool.size()) {
+            m_islandPool.emplace_back(std::make_unique<Island>((int)m_bodies.size(), (int)m_contactMap.size()));
+        }
+        Island* island = m_islandPool[islandIndex++].get();
+        island->clear();
 
         // 3. DFS 遍历
         std::vector<Body*> stack;
@@ -400,24 +410,19 @@ void World::buildAndSolveIslands(float dt) {
         stack.push_back(seed);
         seed->m_islandFlag = true;
 
-        int bodiesInIsland = 0;
-        int contactsInIsland = 0;
-
         while (!stack.empty()) {
             Body* b = stack.back();
             stack.pop_back();
 
-            island.add(b);
-            bodiesInIsland++; // 计数
+            island->add(b);
 
             for (ContactEdge* ce = b->getContactList(); ce; ce = ce->next) {
                 Contact* contact = ce->contact;
 
                 if (contact->m_islandFlag || !contact->isTouching()) continue;
 
-                island.add(contact);
+                island->add(contact);
                 contact->m_islandFlag = true;
-                contactsInIsland++; // 计数
 
                 Body* other = ce->other;
                 if (other->getInvMass() > 0.0f) {
@@ -431,9 +436,9 @@ void World::buildAndSolveIslands(float dt) {
                     other->m_islandFlag = true;
                     stack.push_back(other);
                 }
-                
                 else {
-                    island.add(other);
+                    // 静态物体：加入岛屿作为只读支撑边界（多线程中零写回，纯共享）
+                    island->add(other);
                 }
             }
 
@@ -442,7 +447,7 @@ void World::buildAndSolveIslands(float dt) {
                 if (joint->m_islandFlag) continue;
 
                 // 将关节加入当前岛屿解算器，并打上标记
-                island.add(joint);
+                island->add(joint);
                 joint->m_islandFlag = true;
 
                 // 寻找关节另一端的对向刚体：谁不是 b，谁就是对方！
@@ -462,13 +467,45 @@ void World::buildAndSolveIslands(float dt) {
                     stack.push_back(other);
                 }
                 else {
-                    // 如果对方是静态物体（比如钉在地上的锚点），加入岛屿作为支撑边界
-                    island.add(other);
+                    // 静态锚点：加入岛屿作为只读支撑边界
+                    island->add(other);
                 }
             }
         }
-        // 4. 解算
-        island.solve(step, m_gravity);
+
+        activeIslands.push_back(island);
+        m_islands.push_back(island);
+    }
+
+    const int activeCount = (int)activeIslands.size();
+    if (activeCount == 0) return;
+
+    // ---------------------------------------------------------------
+    // 阶段二：并发并行求解
+    //   （"4.1 Island Solve" 计时器挂在主线程的调度调用外——worker 线程
+    //     严禁触碰 Profiler，本计时器记录的是整段并行求解的墙钟跨度）
+    // ---------------------------------------------------------------
+    {
+        ScopedTimer timer(m_profiler, "4.1 Island Solve");
+        if (m_parallelIslands && activeCount > 1) {
+            // 线程池懒初始化：首个多岛帧才启动工作线程（单岛/零岛场景零线程开销）
+            if (!m_threadPool) {
+                m_threadPool = std::make_unique<Physics2D::ThreadPool>();
+            }
+            const int workers = m_threadPool->GetNumThreads();
+            if (workers > 1) {
+                // 多核爆发：ParallelFor 把全部岛屿抛向各核，工作窃取动态负载均衡
+                m_threadPool->ParallelFor(0, activeCount, [&](int i) {
+                    activeIslands[i]->solve(step, m_gravity);
+                });
+                return;
+            }
+        }
+
+        // 单岛 / 单核 / 显式禁用并行：主线程原地串行求解
+        for (Island* island : activeIslands) {
+            island->solve(step, m_gravity);
+        }
     }
 }
 

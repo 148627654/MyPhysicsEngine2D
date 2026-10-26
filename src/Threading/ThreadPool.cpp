@@ -27,6 +27,7 @@ ThreadPool::ThreadPool(int numThreads)
     // 队列与计数数组原地构造（含 atomic 成员，vector 无法搬运，用 unique_ptr 数组）
     m_queues = std::make_unique<WorkStealingQueue[]>(m_numThreads);
     m_stealCounts = std::make_unique<std::atomic<uint64_t>[]>(m_numThreads); // 值初始化为 0
+    m_workerBusyNs = std::make_unique<std::atomic<uint64_t>[]>(m_numThreads); // 负载分布诊断
 
     m_threads.reserve(m_numThreads);
     for (int i = 0; i < m_numThreads; ++i) {
@@ -108,7 +109,12 @@ void ThreadPool::WorkerLoop(int workerId)
         // 1. 优先消费本地队列（LIFO：缓存最热）
         if (local.Pop(task)) {
             if (task) { // 防御：绝不调用空任务
+                const auto t0 = std::chrono::steady_clock::now();
                 task();
+                m_workerBusyNs[workerId].fetch_add(
+                    (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - t0).count(),
+                    std::memory_order_relaxed);
                 m_executedCount.fetch_add(1, std::memory_order_relaxed);
             }
             spin = 0;
@@ -118,7 +124,12 @@ void ThreadPool::WorkerLoop(int workerId)
         // 2. 本地为空：随机轮询窃取邻居（FIFO：老任务颗粒度大）
         if (TrySteal(workerId, task)) {
             if (task) { // 防御：绝不调用空任务
+                const auto t0 = std::chrono::steady_clock::now();
                 task();
+                m_workerBusyNs[workerId].fetch_add(
+                    (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - t0).count(),
+                    std::memory_order_relaxed);
                 m_executedCount.fetch_add(1, std::memory_order_relaxed);
             }
             spin = 0;
@@ -150,7 +161,12 @@ void ThreadPool::Wait(std::atomic<int>& counter)
         Task task;
         if (TrySteal(-1, task)) {
             if (task) { // 防御：绝不调用空任务
+                const auto t0 = std::chrono::steady_clock::now();
                 task();
+                m_mainBusyNs.fetch_add(
+                    (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - t0).count(),
+                    std::memory_order_relaxed);
                 m_mainExecuted.fetch_add(1, std::memory_order_relaxed);
             }
             spin = 0;

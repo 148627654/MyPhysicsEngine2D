@@ -51,8 +51,8 @@ TEST(V3_007, IslandConnectivity) {
     // 断言：DFS 把 A 和 B 归入同一个 Island（1 岛屿、2 刚体、1 关节）
     const auto& islands = world.getIslands();
     ASSERT_EQ(islands.size(), 1u);
-    EXPECT_EQ(islands[0].getBodyCount(), 2);
-    EXPECT_EQ(islands[0].getJointCount(), 1);
+    EXPECT_EQ(islands[0]->getBodyCount(), 2);
+    EXPECT_EQ(islands[0]->getJointCount(), 1);
 }
 
 // --- 场景 2: 约束解算管线被调测试 (Solver Pipeline dispatch) ---

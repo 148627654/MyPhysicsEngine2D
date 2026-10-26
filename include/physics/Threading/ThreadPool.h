@@ -41,6 +41,9 @@ public:
     uint64_t GetStealCount() const { return m_stealCount.load(std::memory_order_relaxed); }
     uint64_t GetStealCount(int workerId) const { return m_stealCounts[workerId].load(std::memory_order_relaxed); }
     uint64_t GetMainExecutedCount() const { return m_mainExecuted.load(std::memory_order_relaxed); }
+    /// 每工作线程累计忙时（任务执行耗时，纳秒）——负载分布诊断（岛屿并行验收用）
+    uint64_t GetWorkerBusyNs(int workerId) const { return m_workerBusyNs[workerId].load(std::memory_order_relaxed); }
+    uint64_t GetMainBusyNs() const { return m_mainBusyNs.load(std::memory_order_relaxed); }
 
 private:
     using Task = std::function<void()>;
@@ -55,12 +58,14 @@ private:
     // 队列/计数器含 std::atomic 成员（不可移动），用 unique_ptr 数组原地构造
     std::unique_ptr<WorkStealingQueue[]> m_queues;
     std::unique_ptr<std::atomic<uint64_t>[]> m_stealCounts;
+    std::unique_ptr<std::atomic<uint64_t>[]> m_workerBusyNs;
 
     std::atomic<bool> m_shutdown{false};
     std::atomic<uint32_t> m_nextWorker{0};   // Submit 轮询游标
     std::atomic<uint64_t> m_executedCount{0};
     std::atomic<uint64_t> m_stealCount{0};   // 全局窃取成功计数
     std::atomic<uint64_t> m_mainExecuted{0}; // 主线程协作执行计数
+    std::atomic<uint64_t> m_mainBusyNs{0};   // 主线程协作忙时
 };
 
 } // namespace Physics2D

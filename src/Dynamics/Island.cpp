@@ -1,6 +1,7 @@
 #include "Island.h"
 #include "Joint.h"
 #include "../../include/physics/Dynamics/Solver.h" // 确保能访问到你之前的解算函数
+#include <cassert>
 
 Island::Island(int bodyCapacity, int contactCapacity) {
     m_bodies.reserve(bodyCapacity);
@@ -10,6 +11,12 @@ Island::Island(int bodyCapacity, int contactCapacity) {
 
 void Island::solve(const TimeStep& step, const Vector2& gravity) {
     float dt = step.dt;
+
+    // [V5 Day 6 并发契约] 本函数在任意工作线程上执行，全部临时缓冲均在
+    // Island 实例内部（无全局/静态状态，天然重入）。静态刚体（invMass==0）
+    // 只提供参考坐标与接触法线：冲量写回经 Body::applyImpulse 的
+    // `getInvMass()==0` 早退拦截，位置修正同样跳静态——多核并发读取同一
+    // 静态地基是纯只读共享，硬件绝对安全。
 
     // 0. 初始化关节速度约束（每帧恰好一次）
     for (Joint* j : m_joints) {
@@ -91,10 +98,14 @@ void Island::solve(const TimeStep& step, const Vector2& gravity) {
         }
     }
 
-    // 集体入睡
+    // 集体入睡（【Debug 防护盾】写回前强断言：静态刚体严禁被修改——
+    // 共享地基的只读纯洁性是岛屿级多线程零锁并发的根基）
     if (minSleepTimer >= Settings::TimeToSleep) {
         for (Body* b : m_bodies) {
             if (b->getInvMass() > 0.0f) {
+#ifdef _DEBUG
+                assert(b->getInvMass() > 0.0f); // 静态刚体零写回铁律
+#endif
                 b->setAwake(false);
                 b->setVelocity(Vector2(0, 0)); // 物理平滑优化
                 b->setAngularVelocity(0.0f);
