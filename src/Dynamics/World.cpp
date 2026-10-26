@@ -282,38 +282,6 @@ void World::removeContactFromGraph(Contact* c) {
     if (c->m_bodyB->m_contactList == &c->m_nodeB) c->m_bodyB->m_contactList = c->m_nodeB.next;
 }
 
-void World::solveTOI(Contact* contact, float dt) {
-    Body* bodyA = contact->m_bodyA;
-    Body* bodyB = contact->m_bodyB;
-    float alpha = contact->m_toi;
-
-    // --- 1. 双向回溯 (Backtracking both) ---
-    // 无论物体是动态还是静态，都根据 alpha 比例回到撞击瞬间
-    // 如果是静态物体，其 velocity 为 0，getTransform 会返回原位，逻辑依然成立
-    Transform xfA = bodyA->getTransform(alpha, dt);
-    Transform xfB = bodyB->getTransform(alpha, dt);
-
-    bodyA->setPosition(xfA.p);
-    bodyA->setRotation(xfA.q);
-    bodyB->setPosition(xfB.p);
-    bodyB->setRotation(xfB.q);
-
-    // --- 2. 刷新碰撞信息 ---
-    contact->update();
-
-    // --- 3. 拦截解算 ---
-    if (contact->isTouching() && !contact->isTrigger()) {
-        impulseSolver(contact->getManifold());
-
-        // 唤醒双方
-        bodyA->setAwake(true);
-        bodyB->setAwake(true);
-    }
-
-    // --- 4. 消耗掉这个 TOI ---
-    contact->m_toi = 1.0f;
-}
-
 void World::removeBody(Body* body) {
     if (body == nullptr) return;
 
@@ -654,22 +622,6 @@ std::vector<Body*> World::TestPointAll(const Vector2& point) const
 	return result;
 }
 
-void World::wakeNeighbors(Body* body)
-{
-    if (body == nullptr || body->getInvMass() == 0.0f) return;
-    ContactEdge* ce = body->getContactList();
-    while (ce != nullptr) {
-        Body* other = ce->other;
-
-        // 关键：只唤醒动态物体（静态物体不需要醒）
-        if (other->getInvMass() > 0.0f) {
-            other->setAwake(true); // 这个函数内部会重置 timer
-        }
-
-        ce = ce->next;
-    }
-}
-
 void World::updateTOI(Contact* c, float dt) {
     if (!c->m_bodyA->isBullet() && !c->m_bodyB->isBullet()) return;
         ++m_frameTOICount;
@@ -709,14 +661,6 @@ void World::updateAllContactsAndTOI(float dt) {
     }
 }
 
-void World::updateNeighborsTOI(Body* b, float dt) {
-    ContactEdge* ce = b->getContactList();
-    while (ce) {
-        updateTOI(ce->contact, dt);
-        ce = ce->next;
-    }
-}
-
 void World::handleNewCollision(void* uA, void* uB, float dt) {
     Body* bodyA = static_cast<Body*>(uA);
     Body* bodyB = static_cast<Body*>(uB);
@@ -751,15 +695,6 @@ void World::handleNewCollision(void* uA, void* uB, float dt) {
     contact->update();
 
     updateTOI(contact, dt);
-}
-
-void World::updateBroadPhase(float dt) {
-    for (Body* b : m_bodies) {
-        if (b->getInvMass() == 0.0f || !b->isAwake()) continue;
-        b->updateAABB();
-        AABB bpAABB = b->isBullet() ? b->getSweptAABB(dt) : b->getAABB();
-        m_broadPhase.moveProxy(b->getProxyId(), bpAABB, b->getVelocity() * dt);
-    }
 }
 
 void World::destroySeparatedContacts() {

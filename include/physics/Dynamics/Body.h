@@ -119,11 +119,8 @@ public:
 	inline void setProxyId(int32_t id) { m_proxyId = id; }
 	ContactEdge* getContactList() { return m_contactList; }
 	inline Vector2 getForce() const { return m_soa ? m_soa->GetForce(m_soaIndex) : force; }
-	inline void setForce(Vector2 f) { if (m_soa) m_soa->SetForce(m_soaIndex, f); else force = f; }
 	inline float getGravityScale() const { return m_soa ? m_soa->gravityScales[m_soaIndex] : gravityScale; }
 	inline void setGravityScale(float g) { if (m_soa) m_soa->gravityScales[m_soaIndex] = g; else gravityScale = g; }
-	inline float getTorque() { return m_soa ? m_soa->torques[m_soaIndex] : torque; }
-	inline void setTorque(float t) { if (m_soa) m_soa->torques[m_soaIndex] = t; else torque = t; }
 	void setAwake(bool w);
 	inline bool isAwake() const { return m_isAwake; }
 	inline bool isSleepAllowed() const { return m_isSleepAllowed; }
@@ -132,7 +129,6 @@ public:
 	inline void setSleepTimer(float time) { m_sleepTimer = time; }
 	void setType(BodyType type, float density = 1.0f);
 	void forceSleep();
-	AABB getSweptAABB(float dt)const;
 	// CCD 轨迹 AABB：联合本帧起始 (P0) 与当前 (P1) 位姿的包围盒（TOI 插值区间）
 	AABB getTrajectoryAABB() const;
 	void setBullet(bool flag) {

@@ -35,8 +35,4 @@ namespace Settings
 
     // 3. 角度容差 (Angular Slop)
     static constexpr float ANGULAR_SLOP = (2.0f / 180.0f * 3.1415926f);
-
-    // 4. TOI 专用容差
-    static constexpr float TOI_BAUMGARTE = 0.75f; // TOI 修正强度
-    static constexpr float TOI_SLOP = 8.0f * EPSILON;
 };

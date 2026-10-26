@@ -5,7 +5,7 @@ TOIOutput TimeOfImpact::solve(const TOIInput& input) {
 	TOIOutput output;
 	output.alpha = 1.0f;
 	output.state = TOIOutput::Separated;
-	output.normal=(0, 0);
+	output.normal = Vector2(0.0f, 0.0f);
 
 	float alpha = 0.0f;
 	const float targetDistance = input.tolerance; // 目标间距

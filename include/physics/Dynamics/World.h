@@ -81,8 +81,6 @@ public:
 	void destroyBody(Body* body);
 	void buildAndSolveIslands(float dt);
 	inline const std::map<std::pair<Body*, Body*>, Contact*>& getContactMap() const {return m_contactMap;}
-	BroadPhase& getBroadPhase() { return m_broadPhase; }
-	void wakeNeighbors(Body* body);
 	void updateTOI(Contact* c, float dt);
 	inline Profiler& getProfiler() { return m_profiler; }
 	// 接触生命周期事件管理（Enter/Stay/Exit），每帧 step 后从这里读取记录
@@ -105,11 +103,8 @@ public:
 private:
 	void addContactToGraph(Contact* c);
 	void removeContactFromGraph(Contact* c);
-	void solveTOI(Contact* contact, float dt);
 	void updateAllContactsAndTOI(float dt);
-	void updateNeighborsTOI(Body* b, float dt);
 	void handleNewCollision(void* uA, void* uB, float dt);
-	void updateBroadPhase(float dt);
 	// 清理已经完全分离的接触对（AABB 不再重叠；涉及 Bullet 的对用扫掠 AABB 判分离）
 	void destroySeparatedContacts();
 	// 处理延迟销毁队列（把 destroyBody 排队的物体真正移除）
@@ -117,7 +112,6 @@ private:
 	std::vector<Body*> m_bodies;
 	BodySoA m_soa;      // [V5 Day 2] 刚体热数据平铺平行数组（SoA 架构核心）
 	Vector2 m_gravity;
-	std::vector<Manifold> m_manifolds;
 	BroadPhase m_broadPhase; // 宽相管理系统
 	std::map<std::pair<Body*, Body*>, Contact*> m_contactMap;
 	ContactManager m_contactManager; // 接触生命周期事件管理

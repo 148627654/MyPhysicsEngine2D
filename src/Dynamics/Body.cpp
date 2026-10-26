@@ -152,18 +152,6 @@ void Body::forceSleep() {
     syncAwakeFlag();
 }
 
-AABB Body::getSweptAABB(float dt) const
-{
-	AABB aabb1 = this->getAABB();
-
-    //预测下一帧的位置与角度（平移 + 旋转联合扫掠，包住整条时空轨迹）
-	Vector2 predictedPosition = this->getPosition() + this->getVelocity() * dt;
-	float predictedRotation = this->getRotation() + this->getAngularVelocity() * dt;
-	AABB aabb2 = shape->computeAABB(predictedPosition, predictedRotation);
-
-	return AABB::combine(aabb1, aabb2);
-}
-
 // CCD 轨迹 AABB：联合本帧起始 (P0) 与当前 (P1) 位姿的包围盒。
 // 与 getSweptAABB（前向预测）不同：TOI 求解器在 P0->P1 区间插值，
 // 接触对分离判定必须覆盖这条已经走过的轨迹，否则高速子弹离散位置越过

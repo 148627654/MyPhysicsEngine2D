@@ -47,7 +47,6 @@ public:
 	inline void clear() { x = 0;y = 0; }
 	//垂直向量
 	Vector2 getLeftNormal() const { return Vector2(-y, x); }
-	Vector2 getRightNormal() const { return Vector2(y, -x); }
 	// 旋转
 	Vector2 rotate(float angle) const;
 
@@ -59,7 +58,6 @@ public:
 	// 在 Vector2 类定义内部添加
 	inline Vector2 add(const Vector2& v) const { return Vector2(x + v.getX( ) , y + v.getY( )); }
 	inline Vector2 sub(const Vector2& v) const { return Vector2(x - v.getX( ) , y - v.getY( )); }
-	inline Vector2 Mul(float s) const { return Vector2(x * s , y * s); }
 public:
 	float x;
 	float y;

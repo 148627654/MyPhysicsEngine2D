@@ -39,7 +39,7 @@ void RopeJoint::initVelocityConstraints(float dt)
 			+ m_bodyA->getInvInertia() * m_crAu * m_crAu
 			+ m_bodyB->getInvInertia() * m_crBu * m_crBu;
 		m_mass = (K > 0.0f) ? 1.0f / K : 0.0f;
-		m_bias = (dt > 0 ? 0.1 * C / dt : 0);
+		m_bias = (dt > 0 ? 0.1f * C / dt : 0.0f);
 		m_bodyA->applyImpulse(-m_impulse * m_u, m_rA);
 		m_bodyB->applyImpulse(m_impulse * m_u, m_rB);
 	}
